@@ -1,0 +1,45 @@
+{
+  "name": "iedit-vscode",
+  "displayName": "iEdit Prototype",
+  "version": "0.1.0",
+  "description": "Prototype VS Code extension for iEdit-style idea processing",
+  "publisher": "kondoumh",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:iedit.openPrototype"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "iedit.openPrototype",
+        "title": "iEdit: Open Prototype"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch",
+    "vscode:prepublish": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "kondoumh",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.11",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "vis-data": "^8.0.3",
+    "vis-network": "^10.0.2"
+  }
+}

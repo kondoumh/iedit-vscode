@@ -1,0 +1,42 @@
+# iEdit Prototype for VS Code
+
+iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code 拡張として試すためのプロトタイプです。
+
+## MVP で実装していること
+
+- ノードの階層管理（ツリー表示）
+- 同階層ノードの並べ替え（↑ / ↓ ボタン）
+- 同階層ノードのネットワーク表示（ノード移動、リンク追加）
+- リンク編集（ラベル変更、削除）
+- 選択ノードのテキスト編集
+- 3ビューの選択同期
+- 自動保存（変更後デバウンス）
+- ワークスペース直下の `.iedit.json` への保存
+
+## 使い方
+
+1. 依存をインストール
+   ```bash
+   npm install
+   ```
+2. ビルド
+   ```bash
+   npm run build
+   ```
+3. VS Code でこのフォルダを開き、`F5` で Extension Development Host を起動
+4. コマンドパレットから `iEdit: Open Prototype` を実行
+
+## ドキュメント形式
+
+`.iedit.json` は次の形です。
+
+```json
+{
+  "version": 1,
+  "selectedNodeId": "root",
+  "nodes": [
+    { "id": "root", "parentId": null, "label": "Root", "text": "" }
+  ],
+  "links": []
+}
+```
