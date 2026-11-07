@@ -28,7 +28,7 @@ interface IEditDocument {
 }
 
 interface HostMessage {
-  type: "init" | "saved" | "saveFailed";
+  type: "init" | "saved" | "saveFailed" | "promptResult";
   payload?: unknown;
 }
 
@@ -208,9 +208,26 @@ const network = new Network(
 
 let state: IEditDocument | null = null;
 let autosaveTimer: number | undefined;
+const pendingInputRequests = new Map<string, (value: string | null) => void>();
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
+}
+
+function requestInput(options: { title: string; value: string; placeHolder?: string }): Promise<string | null> {
+  const requestId = `req-${uuid()}`;
+  return new Promise((resolve) => {
+    pendingInputRequests.set(requestId, resolve);
+    vscode.postMessage({
+      type: "requestInput",
+      payload: {
+        requestId,
+        title: options.title,
+        value: options.value,
+        placeHolder: options.placeHolder
+      }
+    });
+  });
 }
 
 function getSelectedNode(): IEditNode | undefined {
@@ -506,16 +523,16 @@ deleteBtn.addEventListener("click", () => {
   requestAutosave();
 });
 
-renameBtn.addEventListener("click", () => {
+renameBtn.addEventListener("click", async () => {
   const selected = getSelectedNode();
   if (!selected) {
     return;
   }
-  const next = window.prompt("Node label", selected.label);
-  if (!next) {
+  const next = await requestInput({ title: "Rename node", value: selected.label, placeHolder: "Node label" });
+  if (next === null || !next.trim()) {
     return;
   }
-  selected.label = next;
+  selected.label = next.trim();
   render();
   syncSelectionUI();
   requestAutosave();
@@ -565,7 +582,7 @@ linkBtn.addEventListener("click", () => {
   requestAutosave();
 });
 
-editLinkBtn.addEventListener("click", () => {
+editLinkBtn.addEventListener("click", async () => {
   if (!state) {
     return;
   }
@@ -573,7 +590,11 @@ editLinkBtn.addEventListener("click", () => {
   if (!link) {
     return;
   }
-  const next = window.prompt("Link label (empty to clear)", link.label ?? "");
+  const next = await requestInput({
+    title: "Edit link label",
+    value: link.label ?? "",
+    placeHolder: "Leave empty to clear"
+  });
   if (next === null) {
     return;
   }
@@ -649,6 +670,15 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
   }
   if (message.type === "saveFailed") {
     setStatus(`Save failed: ${String(message.payload)}`);
+  }
+  if (message.type === "promptResult") {
+    const payload = message.payload as { requestId: string; cancelled: boolean; value: string };
+    const resolve = pendingInputRequests.get(payload.requestId);
+    if (!resolve) {
+      return;
+    }
+    pendingInputRequests.delete(payload.requestId);
+    resolve(payload.cancelled ? null : payload.value);
   }
 });
 

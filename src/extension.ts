@@ -26,6 +26,13 @@ interface IEditDocument {
   links: IEditLink[];
 }
 
+interface InputRequestPayload {
+  requestId: string;
+  title: string;
+  value: string;
+  placeHolder?: string;
+}
+
 function defaultDocument(): IEditDocument {
   return {
     version: 1,
@@ -132,6 +139,23 @@ export function activate(context: vscode.ExtensionContext): void {
           await panel.webview.postMessage({ type: "saveFailed", payload: message });
           vscode.window.showErrorMessage(`Failed to save iEdit document: ${message}`);
         }
+        return;
+      }
+      if (typed.type === "requestInput") {
+        const payload = typed.payload as InputRequestPayload;
+        const input = await vscode.window.showInputBox({
+          title: payload.title,
+          value: payload.value,
+          placeHolder: payload.placeHolder
+        });
+        await panel.webview.postMessage({
+          type: "promptResult",
+          payload: {
+            requestId: payload.requestId,
+            cancelled: input === undefined,
+            value: input ?? ""
+          }
+        });
       }
     });
   });
