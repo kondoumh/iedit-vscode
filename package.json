@@ -12,9 +12,18 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:iedit.openPrototype"
+    "onCommand:iedit.openPrototype",
+    "onView:iedit.outlineView"
   ],
   "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "iedit.outlineView",
+          "name": "iEdit Outline"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "iedit.openPrototype",

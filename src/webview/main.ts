@@ -32,7 +32,7 @@ interface IEditDocument {
 }
 
 interface HostMessage {
-  type: "init" | "saved" | "saveFailed" | "promptResult";
+  type: "init" | "saved" | "saveFailed" | "promptResult" | "externalSelectNode";
   payload?: unknown;
 }
 
@@ -44,10 +44,11 @@ declare function acquireVsCodeApi(): VsCodeApi;
 
 const vscode = acquireVsCodeApi();
 
-const app = document.getElementById("app");
-if (!app) {
+const appElement = document.getElementById("app");
+if (!appElement) {
   throw new Error("app container not found");
 }
+const app = appElement as HTMLDivElement;
 
 app.innerHTML = `
 <style>
@@ -64,6 +65,8 @@ app.innerHTML = `
     height: 100vh;
     display: grid;
     grid-template-rows: auto 1fr;
+    --left-pane-width: 300px;
+    --bottom-pane-height: 220px;
   }
   .toolbar {
     display: flex;
@@ -74,7 +77,7 @@ app.innerHTML = `
   }
   .layout {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: minmax(180px, var(--left-pane-width)) 6px minmax(320px, 1fr);
     min-height: 0;
   }
   .pane {
@@ -87,8 +90,21 @@ app.innerHTML = `
   }
   .right-pane {
     display: grid;
-    grid-template-rows: 1fr 220px;
+    grid-template-rows: minmax(140px, 1fr) 6px minmax(120px, var(--bottom-pane-height));
     min-height: 0;
+  }
+  .splitter {
+    background: var(--vscode-panel-border);
+    opacity: 0.7;
+  }
+  .splitter:hover {
+    opacity: 1;
+  }
+  .splitter.vertical {
+    cursor: col-resize;
+  }
+  .splitter.horizontal {
+    cursor: row-resize;
   }
   #network {
     min-height: 0;
@@ -175,8 +191,10 @@ app.innerHTML = `
     <div class="meta" id="docPath"></div>
     <div id="tree"></div>
   </div>
+  <div id="verticalSplitter" class="splitter vertical" title="Resize panes"></div>
   <div class="right-pane pane">
     <div id="network"></div>
+    <div id="horizontalSplitter" class="splitter horizontal" title="Resize panes"></div>
     <div id="textEditor"></div>
   </div>
 </div>
@@ -200,6 +218,8 @@ const editLinkBtn = document.getElementById("editLinkBtn") as HTMLButtonElement;
 const deleteLinkBtn = document.getElementById("deleteLinkBtn") as HTMLButtonElement;
 const shapeSelect = document.getElementById("shapeSelect") as HTMLSelectElement;
 const networkEl = document.getElementById("network") as HTMLDivElement;
+const verticalSplitter = document.getElementById("verticalSplitter") as HTMLDivElement;
+const horizontalSplitter = document.getElementById("horizontalSplitter") as HTMLDivElement;
 
 const nodesData = new DataSet<Record<string, unknown>>();
 const edgesData = new DataSet<Record<string, unknown>>();
@@ -238,6 +258,70 @@ function requestInput(options: { title: string; value: string; placeHolder?: str
         placeHolder: options.placeHolder
       }
     });
+  });
+}
+
+function notifySelectionChanged(): void {
+  if (!state) {
+    return;
+  }
+  vscode.postMessage({
+    type: "selectionChanged",
+    payload: { nodeId: state.selectedNodeId }
+  });
+}
+
+function setSelectedNode(nodeId: string): void {
+  if (!state || state.selectedNodeId === nodeId) {
+    return;
+  }
+  state.selectedNodeId = nodeId;
+  syncSelectionUI();
+  render();
+  notifySelectionChanged();
+}
+
+function setupPaneResizers(): void {
+  verticalSplitter.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    verticalSplitter.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent: PointerEvent): void => {
+      const width = Math.min(Math.max(moveEvent.clientX, 180), window.innerWidth - 320);
+      app.style.setProperty("--left-pane-width", `${width}px`);
+      network.redraw();
+    };
+    const onUp = (upEvent: PointerEvent): void => {
+      verticalSplitter.releasePointerCapture(upEvent.pointerId);
+      verticalSplitter.removeEventListener("pointermove", onMove);
+      verticalSplitter.removeEventListener("pointerup", onUp);
+      verticalSplitter.removeEventListener("pointercancel", onUp);
+    };
+    verticalSplitter.addEventListener("pointermove", onMove);
+    verticalSplitter.addEventListener("pointerup", onUp);
+    verticalSplitter.addEventListener("pointercancel", onUp);
+  });
+
+  horizontalSplitter.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    horizontalSplitter.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent: PointerEvent): void => {
+      const appRect = app.getBoundingClientRect();
+      const toolbarHeight = 44;
+      const maxBottom = appRect.height - toolbarHeight - 140;
+      const fromBottom = appRect.bottom - moveEvent.clientY;
+      const height = Math.min(Math.max(fromBottom, 120), Math.max(maxBottom, 120));
+      app.style.setProperty("--bottom-pane-height", `${height}px`);
+      network.redraw();
+    };
+    const onUp = (upEvent: PointerEvent): void => {
+      horizontalSplitter.releasePointerCapture(upEvent.pointerId);
+      horizontalSplitter.removeEventListener("pointermove", onMove);
+      horizontalSplitter.removeEventListener("pointerup", onUp);
+      horizontalSplitter.removeEventListener("pointercancel", onUp);
+    };
+    horizontalSplitter.addEventListener("pointermove", onMove);
+    horizontalSplitter.addEventListener("pointerup", onUp);
+    horizontalSplitter.addEventListener("pointercancel", onUp);
   });
 }
 
@@ -333,12 +417,10 @@ function renderTree(): void {
   for (const element of Array.from(treeEl.querySelectorAll(".tree-node"))) {
     element.addEventListener("click", () => {
       const id = (element as HTMLElement).dataset.nodeId;
-      if (!id || !state) {
+      if (!id) {
         return;
       }
-      state.selectedNodeId = id;
-      syncSelectionUI();
-      render();
+      setSelectedNode(id);
     });
   }
 }
@@ -465,6 +547,7 @@ function addNode(parentId: string | null): void {
     shape: "box"
   });
   state.selectedNodeId = id;
+  notifySelectionChanged();
   render();
   syncSelectionUI();
 }
@@ -576,6 +659,7 @@ deleteBtn.addEventListener("click", () => {
   const parentId = selected.parentId;
   removeNodeAndDescendants(selected.id);
   state.selectedNodeId = parentId ?? "root";
+  notifySelectionChanged();
   render();
   syncSelectionUI();
   requestAutosave();
@@ -683,9 +767,7 @@ network.on("click", (event) => {
   if (!first) {
     return;
   }
-  state.selectedNodeId = first as string;
-  render();
-  syncSelectionUI();
+  setSelectedNode(first as string);
 });
 
 network.on("dragEnd", (event) => {
@@ -730,6 +812,11 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
     pendingInputRequests.delete(payload.requestId);
     resolve(payload.cancelled ? null : payload.value);
   }
+  if (message.type === "externalSelectNode") {
+    const payload = message.payload as { nodeId: string };
+    setSelectedNode(payload.nodeId);
+  }
 });
 
 vscode.postMessage({ type: "requestInit" });
+setupPaneResizers();

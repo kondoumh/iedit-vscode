@@ -33,6 +33,40 @@ interface InputRequestPayload {
   placeHolder?: string;
 }
 
+class IEditOutlineProvider implements vscode.TreeDataProvider<IEditNode> {
+  private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<IEditNode | undefined>();
+  readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
+
+  constructor(private readonly getDocument: () => IEditDocument) {}
+
+  refresh(): void {
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  getTreeItem(element: IEditNode): vscode.TreeItem {
+    const hasChildren = this.getDocument().nodes.some((node) => node.parentId === element.id);
+    const item = new vscode.TreeItem(
+      element.label,
+      hasChildren ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
+    );
+    item.id = element.id;
+    item.description = element.id === this.getDocument().selectedNodeId ? "selected" : undefined;
+    return item;
+  }
+
+  getChildren(element?: IEditNode): IEditNode[] {
+    const document = this.getDocument();
+    if (!element) {
+      return document.nodes.filter((node) => node.parentId === null);
+    }
+    return document.nodes.filter((node) => node.parentId === element.id);
+  }
+
+  findNode(id: string): IEditNode | undefined {
+    return this.getDocument().nodes.find((node) => node.id === id);
+  }
+}
+
 function defaultDocument(): IEditDocument {
   return {
     version: 1,
@@ -99,15 +133,57 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  let panel: vscode.WebviewPanel | undefined;
+  let loaded = { uri: getDocumentUri(), doc: defaultDocument() };
+  const outlineProvider = new IEditOutlineProvider(() => loaded.doc);
+  const outlineView = vscode.window.createTreeView("iedit.outlineView", {
+    treeDataProvider: outlineProvider,
+    showCollapseAll: true
+  });
+
+  const postSelectionToWebview = async (): Promise<void> => {
+    if (!panel) {
+      return;
+    }
+    await panel.webview.postMessage({
+      type: "externalSelectNode",
+      payload: { nodeId: loaded.doc.selectedNodeId }
+    });
+  };
+
+  context.subscriptions.push(
+    outlineView,
+    outlineView.onDidChangeSelection(async (event) => {
+      const selected = event.selection[0];
+      if (!selected) {
+        return;
+      }
+      loaded.doc.selectedNodeId = selected.id;
+      outlineProvider.refresh();
+      await postSelectionToWebview();
+    })
+  );
+
   const openDisposable = vscode.commands.registerCommand("iedit.openPrototype", async () => {
-    const panel = vscode.window.createWebviewPanel("ieditPrototype", "iEdit Prototype", vscode.ViewColumn.One, {
+    if (panel) {
+      panel.reveal(vscode.ViewColumn.One);
+      await panel.webview.postMessage({
+        type: "init",
+        payload: { document: loaded.doc, path: loaded.uri?.fsPath ?? "(unsaved)" }
+      });
+      return;
+    }
+
+    panel = vscode.window.createWebviewPanel("ieditPrototype", "iEdit Prototype", vscode.ViewColumn.One, {
       enableScripts: true,
       retainContextWhenHidden: true
     });
-
     panel.webview.html = getHtml(panel.webview, context.extensionUri);
 
-    let loaded: { uri: vscode.Uri | undefined; doc: IEditDocument };
+    panel.onDidDispose(() => {
+      panel = undefined;
+    });
+
     try {
       loaded = await loadDocument();
     } catch (error) {
@@ -115,6 +191,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.window.showErrorMessage(`Failed to load iEdit document: ${message}`);
       loaded = { uri: getDocumentUri(), doc: defaultDocument() };
     }
+    outlineProvider.refresh();
 
     panel.webview.onDidReceiveMessage(async (message: unknown) => {
       if (typeof message !== "object" || message === null || !("type" in message)) {
@@ -122,10 +199,20 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const typed = message as { type: string; payload?: unknown };
       if (typed.type === "requestInit") {
-        await panel.webview.postMessage({
+        await panel?.webview.postMessage({
           type: "init",
           payload: { document: loaded.doc, path: loaded.uri?.fsPath ?? "(unsaved)" }
         });
+        return;
+      }
+      if (typed.type === "selectionChanged") {
+        const payload = typed.payload as { nodeId: string };
+        loaded.doc.selectedNodeId = payload.nodeId;
+        outlineProvider.refresh();
+        const node = outlineProvider.findNode(payload.nodeId);
+        if (node) {
+          await outlineView.reveal(node, { select: true, focus: false, expand: true });
+        }
         return;
       }
       if (typed.type === "saveDocument") {
@@ -133,10 +220,11 @@ export function activate(context: vscode.ExtensionContext): void {
           const payload = typed.payload as IEditDocument;
           await saveDocument(loaded.uri, payload);
           loaded.doc = payload;
-          await panel.webview.postMessage({ type: "saved" });
+          outlineProvider.refresh();
+          await panel?.webview.postMessage({ type: "saved" });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          await panel.webview.postMessage({ type: "saveFailed", payload: message });
+          await panel?.webview.postMessage({ type: "saveFailed", payload: message });
           vscode.window.showErrorMessage(`Failed to save iEdit document: ${message}`);
         }
         return;
@@ -148,7 +236,7 @@ export function activate(context: vscode.ExtensionContext): void {
           value: payload.value,
           placeHolder: payload.placeHolder
         });
-        await panel.webview.postMessage({
+        await panel?.webview.postMessage({
           type: "promptResult",
           payload: {
             requestId: payload.requestId,
