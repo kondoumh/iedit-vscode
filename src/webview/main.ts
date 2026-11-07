@@ -96,6 +96,8 @@ app.innerHTML = `
   .splitter {
     background: var(--vscode-panel-border);
     opacity: 0.7;
+    user-select: none;
+    touch-action: none;
   }
   .splitter:hover {
     opacity: 1;
@@ -282,46 +284,69 @@ function setSelectedNode(nodeId: string): void {
 }
 
 function setupPaneResizers(): void {
-  verticalSplitter.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    verticalSplitter.setPointerCapture(event.pointerId);
+  const layoutEl = app.querySelector(".layout") as HTMLDivElement | null;
+  const rightPaneEl = app.querySelector(".right-pane") as HTMLDivElement | null;
+  if (!layoutEl || !rightPaneEl) {
+    return;
+  }
+
+  const attachDragHandler = (
+    splitter: HTMLDivElement,
+    onMoveValue: (event: PointerEvent) => void
+  ): void => {
+    let activePointerId: number | null = null;
     const onMove = (moveEvent: PointerEvent): void => {
-      const width = Math.min(Math.max(moveEvent.clientX, 180), window.innerWidth - 320);
-      app.style.setProperty("--left-pane-width", `${width}px`);
-      network.redraw();
+      if (moveEvent.pointerId !== activePointerId) {
+        return;
+      }
+      onMoveValue(moveEvent);
     };
-    const onUp = (upEvent: PointerEvent): void => {
-      verticalSplitter.releasePointerCapture(upEvent.pointerId);
-      verticalSplitter.removeEventListener("pointermove", onMove);
-      verticalSplitter.removeEventListener("pointerup", onUp);
-      verticalSplitter.removeEventListener("pointercancel", onUp);
+    const cleanup = (): void => {
+      splitter.removeEventListener("pointermove", onMove);
+      splitter.removeEventListener("pointerup", onPointerEnd);
+      splitter.removeEventListener("pointercancel", onPointerEnd);
+      splitter.removeEventListener("lostpointercapture", onLostPointerCapture);
+      activePointerId = null;
     };
-    verticalSplitter.addEventListener("pointermove", onMove);
-    verticalSplitter.addEventListener("pointerup", onUp);
-    verticalSplitter.addEventListener("pointercancel", onUp);
+    const onLostPointerCapture = (): void => {
+      cleanup();
+    };
+    const onPointerEnd = (endEvent: PointerEvent): void => {
+      if (endEvent.pointerId !== activePointerId) {
+        return;
+      }
+      if (splitter.hasPointerCapture(endEvent.pointerId)) {
+        splitter.releasePointerCapture(endEvent.pointerId);
+      }
+      cleanup();
+    };
+    splitter.addEventListener("pointerdown", (downEvent) => {
+      if (activePointerId !== null) {
+        return;
+      }
+      activePointerId = downEvent.pointerId;
+      downEvent.preventDefault();
+      splitter.setPointerCapture(downEvent.pointerId);
+      splitter.addEventListener("pointermove", onMove);
+      splitter.addEventListener("pointerup", onPointerEnd);
+      splitter.addEventListener("pointercancel", onPointerEnd);
+      splitter.addEventListener("lostpointercapture", onLostPointerCapture);
+    });
+  };
+
+  attachDragHandler(verticalSplitter, (moveEvent) => {
+    const layoutRect = layoutEl.getBoundingClientRect();
+    const width = Math.min(Math.max(moveEvent.clientX - layoutRect.left, 180), layoutRect.width - 320);
+    app.style.setProperty("--left-pane-width", `${width}px`);
+    network.redraw();
   });
 
-  horizontalSplitter.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    horizontalSplitter.setPointerCapture(event.pointerId);
-    const onMove = (moveEvent: PointerEvent): void => {
-      const appRect = app.getBoundingClientRect();
-      const toolbarHeight = 44;
-      const maxBottom = appRect.height - toolbarHeight - 140;
-      const fromBottom = appRect.bottom - moveEvent.clientY;
-      const height = Math.min(Math.max(fromBottom, 120), Math.max(maxBottom, 120));
-      app.style.setProperty("--bottom-pane-height", `${height}px`);
-      network.redraw();
-    };
-    const onUp = (upEvent: PointerEvent): void => {
-      horizontalSplitter.releasePointerCapture(upEvent.pointerId);
-      horizontalSplitter.removeEventListener("pointermove", onMove);
-      horizontalSplitter.removeEventListener("pointerup", onUp);
-      horizontalSplitter.removeEventListener("pointercancel", onUp);
-    };
-    horizontalSplitter.addEventListener("pointermove", onMove);
-    horizontalSplitter.addEventListener("pointerup", onUp);
-    horizontalSplitter.addEventListener("pointercancel", onUp);
+  attachDragHandler(horizontalSplitter, (moveEvent) => {
+    const rightPaneRect = rightPaneEl.getBoundingClientRect();
+    const fromBottom = rightPaneRect.bottom - moveEvent.clientY;
+    const height = Math.min(Math.max(fromBottom, 120), rightPaneRect.height - 140);
+    app.style.setProperty("--bottom-pane-height", `${height}px`);
+    network.redraw();
   });
 }
 
