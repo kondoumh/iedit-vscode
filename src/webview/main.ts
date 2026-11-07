@@ -170,6 +170,8 @@ app.innerHTML = `
   <button id="addSiblingBtn">+ Sibling</button>
   <button id="moveUpBtn">↑</button>
   <button id="moveDownBtn">↓</button>
+  <button id="indentBtn">→</button>
+  <button id="outdentBtn">←</button>
   <button id="deleteBtn">Delete</button>
   <button id="renameBtn">Rename</button>
   <select id="shapeSelect">
@@ -209,6 +211,8 @@ const addChildBtn = document.getElementById("addChildBtn") as HTMLButtonElement;
 const addSiblingBtn = document.getElementById("addSiblingBtn") as HTMLButtonElement;
 const moveUpBtn = document.getElementById("moveUpBtn") as HTMLButtonElement;
 const moveDownBtn = document.getElementById("moveDownBtn") as HTMLButtonElement;
+const indentBtn = document.getElementById("indentBtn") as HTMLButtonElement;
+const outdentBtn = document.getElementById("outdentBtn") as HTMLButtonElement;
 const deleteBtn = document.getElementById("deleteBtn") as HTMLButtonElement;
 const renameBtn = document.getElementById("renameBtn") as HTMLButtonElement;
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
@@ -603,6 +607,94 @@ function moveSelectedSibling(offset: -1 | 1): void {
   syncSelectionUI();
 }
 
+function collectSubtreeIds(rootId: string): Set<string> {
+  const ids = new Set<string>();
+  const walk = (nodeId: string): void => {
+    ids.add(nodeId);
+    for (const node of state?.nodes ?? []) {
+      if (node.parentId === nodeId) {
+        walk(node.id);
+      }
+    }
+  };
+  walk(rootId);
+  return ids;
+}
+
+function moveSubtreeBlock(sourceId: string, insertIndexInRemaining: number): void {
+  if (!state) {
+    return;
+  }
+  const sourceSubtreeIds = collectSubtreeIds(sourceId);
+  const sourceBlock = state.nodes.filter((node) => sourceSubtreeIds.has(node.id));
+  const remaining = state.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+  const boundedIndex = Math.min(Math.max(insertIndexInRemaining, 0), remaining.length);
+  state.nodes = [...remaining.slice(0, boundedIndex), ...sourceBlock, ...remaining.slice(boundedIndex)];
+}
+
+function indentSelectedNode(): void {
+  if (!state) {
+    return;
+  }
+  const selected = getSelectedNode();
+  if (!selected || selected.id === "root") {
+    return;
+  }
+  const siblings = getChildren(selected.parentId);
+  const currentIndex = siblings.findIndex((node) => node.id === selected.id);
+  if (currentIndex <= 0) {
+    return;
+  }
+  const newParent = siblings[currentIndex - 1];
+  selected.parentId = newParent.id;
+
+  const sourceSubtreeIds = collectSubtreeIds(selected.id);
+  const newParentSubtreeIds = collectSubtreeIds(newParent.id);
+  const remaining = state.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+  const targetIndexes = remaining
+    .map((node, index) => ({ node, index }))
+    .filter((entry) => newParentSubtreeIds.has(entry.node.id))
+    .map((entry) => entry.index);
+  if (targetIndexes.length === 0) {
+    return;
+  }
+  moveSubtreeBlock(selected.id, targetIndexes[targetIndexes.length - 1] + 1);
+  render();
+  syncSelectionUI();
+}
+
+function outdentSelectedNode(): void {
+  if (!state) {
+    return;
+  }
+  const selected = getSelectedNode();
+  if (!selected || selected.id === "root" || selected.parentId === null) {
+    return;
+  }
+  const parent = findNode(selected.parentId);
+  if (!parent) {
+    return;
+  }
+  const sourceSubtreeIds = collectSubtreeIds(selected.id);
+  const parentSubtreeIds = collectSubtreeIds(parent.id);
+  for (const nodeId of sourceSubtreeIds) {
+    parentSubtreeIds.delete(nodeId);
+  }
+  selected.parentId = parent.parentId;
+
+  const remaining = state.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+  const targetIndexes = remaining
+    .map((node, index) => ({ node, index }))
+    .filter((entry) => parentSubtreeIds.has(entry.node.id))
+    .map((entry) => entry.index);
+  if (targetIndexes.length === 0) {
+    return;
+  }
+  moveSubtreeBlock(selected.id, targetIndexes[targetIndexes.length - 1] + 1);
+  render();
+  syncSelectionUI();
+}
+
 function removeNodeAndDescendants(nodeId: string): void {
   if (!state) {
     return;
@@ -670,6 +762,16 @@ moveUpBtn.addEventListener("click", () => {
 
 moveDownBtn.addEventListener("click", () => {
   moveSelectedSibling(1);
+  requestAutosave();
+});
+
+indentBtn.addEventListener("click", () => {
+  indentSelectedNode();
+  requestAutosave();
+});
+
+outdentBtn.addEventListener("click", () => {
+  outdentSelectedNode();
   requestAutosave();
 });
 

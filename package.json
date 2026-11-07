@@ -28,8 +28,48 @@
       {
         "command": "iedit.openPrototype",
         "title": "iEdit: Open Prototype"
+      },
+      {
+        "command": "iedit.outline.moveUp",
+        "title": "iEdit Outline: Move Up"
+      },
+      {
+        "command": "iedit.outline.moveDown",
+        "title": "iEdit Outline: Move Down"
+      },
+      {
+        "command": "iedit.outline.indent",
+        "title": "iEdit Outline: Indent"
+      },
+      {
+        "command": "iedit.outline.outdent",
+        "title": "iEdit Outline: Outdent"
       }
-    ]
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "iedit.outline.moveUp",
+          "when": "view == iedit.outlineView",
+          "group": "inline@1"
+        },
+        {
+          "command": "iedit.outline.moveDown",
+          "when": "view == iedit.outlineView",
+          "group": "inline@2"
+        },
+        {
+          "command": "iedit.outline.indent",
+          "when": "view == iedit.outlineView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "iedit.outline.outdent",
+          "when": "view == iedit.outlineView",
+          "group": "navigation@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "node ./scripts/build.mjs",

@@ -151,6 +151,154 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   };
 
+  const postDocumentToWebview = async (): Promise<void> => {
+    if (!panel) {
+      return;
+    }
+    await panel.webview.postMessage({
+      type: "init",
+      payload: { document: loaded.doc, path: loaded.uri?.fsPath ?? "(unsaved)" }
+    });
+  };
+
+  const persistOutlineChange = async (): Promise<void> => {
+    await saveDocument(loaded.uri, loaded.doc);
+    outlineProvider.refresh();
+    await postDocumentToWebview();
+  };
+
+  const findNodeById = (nodeId: string): IEditNode | undefined => {
+    return loaded.doc.nodes.find((node) => node.id === nodeId);
+  };
+
+  const getSelectedNode = (): IEditNode | undefined => {
+    return findNodeById(loaded.doc.selectedNodeId);
+  };
+
+  const collectSubtreeIds = (rootId: string): Set<string> => {
+    const ids = new Set<string>();
+    const walk = (nodeId: string): void => {
+      ids.add(nodeId);
+      for (const node of loaded.doc.nodes) {
+        if (node.parentId === nodeId) {
+          walk(node.id);
+        }
+      }
+    };
+    walk(rootId);
+    return ids;
+  };
+
+  const moveSubtreeBlock = (sourceId: string, insertIndexInRemaining: number): void => {
+    const sourceSubtreeIds = collectSubtreeIds(sourceId);
+    const sourceBlock = loaded.doc.nodes.filter((node) => sourceSubtreeIds.has(node.id));
+    const remaining = loaded.doc.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+    const boundedIndex = Math.min(Math.max(insertIndexInRemaining, 0), remaining.length);
+    loaded.doc.nodes = [
+      ...remaining.slice(0, boundedIndex),
+      ...sourceBlock,
+      ...remaining.slice(boundedIndex)
+    ];
+  };
+
+  const getSiblingNodes = (node: IEditNode): IEditNode[] => {
+    return loaded.doc.nodes.filter((candidate) => candidate.parentId === node.parentId);
+  };
+
+  const resolveTargetNode = (target?: IEditNode): IEditNode | undefined => {
+    if (target) {
+      loaded.doc.selectedNodeId = target.id;
+      return target;
+    }
+    return getSelectedNode();
+  };
+
+  const moveSelectedNode = async (direction: -1 | 1, target?: IEditNode): Promise<void> => {
+    const sourceNode = resolveTargetNode(target);
+    if (!sourceNode || sourceNode.id === "root") {
+      return;
+    }
+    const siblings = getSiblingNodes(sourceNode);
+    const currentIndex = siblings.findIndex((node) => node.id === sourceNode.id);
+    const swapIndex = currentIndex + direction;
+    if (currentIndex < 0 || swapIndex < 0 || swapIndex >= siblings.length) {
+      return;
+    }
+    const swapNode = siblings[swapIndex];
+    const swapSubtreeIds = collectSubtreeIds(swapNode.id);
+    const sourceSubtreeIds = collectSubtreeIds(sourceNode.id);
+    const remaining = loaded.doc.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+    const targetIndexes = remaining
+      .map((node, index) => ({ node, index }))
+      .filter((entry) => swapSubtreeIds.has(entry.node.id))
+      .map((entry) => entry.index);
+    if (targetIndexes.length === 0) {
+      return;
+    }
+    const insertIndex =
+      direction < 0 ? targetIndexes[0] : targetIndexes[targetIndexes.length - 1] + 1;
+    moveSubtreeBlock(sourceNode.id, insertIndex);
+    loaded.doc.selectedNodeId = sourceNode.id;
+    await persistOutlineChange();
+  };
+
+  const indentSelectedNode = async (target?: IEditNode): Promise<void> => {
+    const sourceNode = resolveTargetNode(target);
+    if (!sourceNode || sourceNode.id === "root") {
+      return;
+    }
+    const siblings = getSiblingNodes(sourceNode);
+    const currentIndex = siblings.findIndex((node) => node.id === sourceNode.id);
+    if (currentIndex <= 0) {
+      return;
+    }
+    const newParent = siblings[currentIndex - 1];
+    sourceNode.parentId = newParent.id;
+
+    const sourceSubtreeIds = collectSubtreeIds(sourceNode.id);
+    const newParentSubtreeIds = collectSubtreeIds(newParent.id);
+    const remaining = loaded.doc.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+    const targetIndexes = remaining
+      .map((node, index) => ({ node, index }))
+      .filter((entry) => newParentSubtreeIds.has(entry.node.id))
+      .map((entry) => entry.index);
+    if (targetIndexes.length === 0) {
+      return;
+    }
+    moveSubtreeBlock(sourceNode.id, targetIndexes[targetIndexes.length - 1] + 1);
+    loaded.doc.selectedNodeId = sourceNode.id;
+    await persistOutlineChange();
+  };
+
+  const outdentSelectedNode = async (target?: IEditNode): Promise<void> => {
+    const sourceNode = resolveTargetNode(target);
+    if (!sourceNode || sourceNode.id === "root" || sourceNode.parentId === null) {
+      return;
+    }
+    const parent = findNodeById(sourceNode.parentId);
+    if (!parent) {
+      return;
+    }
+    const sourceSubtreeIds = collectSubtreeIds(sourceNode.id);
+    const parentSubtreeIds = collectSubtreeIds(parent.id);
+    for (const nodeId of sourceSubtreeIds) {
+      parentSubtreeIds.delete(nodeId);
+    }
+
+    sourceNode.parentId = parent.parentId;
+    const remaining = loaded.doc.nodes.filter((node) => !sourceSubtreeIds.has(node.id));
+    const targetIndexes = remaining
+      .map((node, index) => ({ node, index }))
+      .filter((entry) => parentSubtreeIds.has(entry.node.id))
+      .map((entry) => entry.index);
+    if (targetIndexes.length === 0) {
+      return;
+    }
+    moveSubtreeBlock(sourceNode.id, targetIndexes[targetIndexes.length - 1] + 1);
+    loaded.doc.selectedNodeId = sourceNode.id;
+    await persistOutlineChange();
+  };
+
   context.subscriptions.push(
     outlineView,
     outlineView.onDidChangeSelection(async (event) => {
@@ -167,10 +315,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const openDisposable = vscode.commands.registerCommand("iedit.openPrototype", async () => {
     if (panel) {
       panel.reveal(vscode.ViewColumn.One);
-      await panel.webview.postMessage({
-        type: "init",
-        payload: { document: loaded.doc, path: loaded.uri?.fsPath ?? "(unsaved)" }
-      });
+      await postDocumentToWebview();
       return;
     }
 
@@ -248,7 +393,32 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
-  context.subscriptions.push(openDisposable);
+  const moveUpDisposable = vscode.commands.registerCommand("iedit.outline.moveUp", async (target?: IEditNode) => {
+    await moveSelectedNode(-1, target);
+  });
+  const moveDownDisposable = vscode.commands.registerCommand(
+    "iedit.outline.moveDown",
+    async (target?: IEditNode) => {
+      await moveSelectedNode(1, target);
+    }
+  );
+  const indentDisposable = vscode.commands.registerCommand("iedit.outline.indent", async (target?: IEditNode) => {
+    await indentSelectedNode(target);
+  });
+  const outdentDisposable = vscode.commands.registerCommand(
+    "iedit.outline.outdent",
+    async (target?: IEditNode) => {
+      await outdentSelectedNode(target);
+    }
+  );
+
+  context.subscriptions.push(
+    openDisposable,
+    moveUpDisposable,
+    moveDownDisposable,
+    indentDisposable,
+    outdentDisposable
+  );
 }
 
 export function deactivate(): void {}

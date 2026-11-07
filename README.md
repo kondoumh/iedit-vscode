@@ -6,7 +6,8 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 
 - ノードの階層管理（ツリー表示）
 - VS Code サイドバーの `iEdit Outline` ツリー表示（Webview と選択同期）
-- 同階層ノードの並べ替え（↑ / ↓ ボタン）
+- `iEdit Outline` のコンテキストメニューで Move Up / Move Down / Indent / Outdent
+- ツールバーの ↑ / ↓ / → / ← で Move Up / Move Down / Indent / Outdent
 - 同階層ノードのネットワーク表示（ノード移動、リンク追加）
 - リンク編集（ラベル変更、削除）
 - 選択ノードの Markdown テキスト編集（シンタックスハイライト）
