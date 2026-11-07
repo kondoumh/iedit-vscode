@@ -1,5 +1,9 @@
 import { DataSet } from "vis-data";
 import { Network } from "vis-network/standalone";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { markdown } from "@codemirror/lang-markdown";
+import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 
 type NodeShape = "box" | "ellipse" | "roundbox";
 
@@ -93,14 +97,19 @@ app.innerHTML = `
   #textEditor {
     width: 100%;
     height: 100%;
-    box-sizing: border-box;
-    border: none;
-    outline: none;
-    resize: none;
-    padding: 10px;
+    min-height: 0;
+  }
+  .cm-editor {
+    height: 100%;
     color: var(--vscode-input-foreground);
     background: var(--vscode-input-background);
     font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+    border: none;
+    outline: none;
+  }
+  .cm-scroller {
+    font-family: inherit;
   }
   .tree-node {
     cursor: pointer;
@@ -168,14 +177,14 @@ app.innerHTML = `
   </div>
   <div class="right-pane pane">
     <div id="network"></div>
-    <textarea id="textEditor" placeholder="Node text"></textarea>
+    <div id="textEditor"></div>
   </div>
 </div>
 `;
 
 const treeEl = document.getElementById("tree") as HTMLDivElement;
 const docPathEl = document.getElementById("docPath") as HTMLDivElement;
-const textEditor = document.getElementById("textEditor") as HTMLTextAreaElement;
+const textEditor = document.getElementById("textEditor") as HTMLDivElement;
 const addChildBtn = document.getElementById("addChildBtn") as HTMLButtonElement;
 const addSiblingBtn = document.getElementById("addSiblingBtn") as HTMLButtonElement;
 const moveUpBtn = document.getElementById("moveUpBtn") as HTMLButtonElement;
@@ -209,6 +218,8 @@ const network = new Network(
 let state: IEditDocument | null = null;
 let autosaveTimer: number | undefined;
 const pendingInputRequests = new Map<string, (value: string | null) => void>();
+let textEditorView: EditorView | undefined;
+let syncingEditor = false;
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -236,6 +247,53 @@ function getSelectedNode(): IEditNode | undefined {
   }
   const currentState = state;
   return currentState.nodes.find((n) => n.id === currentState.selectedNodeId);
+}
+
+function ensureTextEditor(): EditorView {
+  if (textEditorView) {
+    return textEditorView;
+  }
+  const initialState = EditorState.create({
+    doc: "",
+    extensions: [
+      markdown(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      EditorView.lineWrapping,
+      EditorView.updateListener.of((update) => {
+        if (!update.docChanged || syncingEditor) {
+          return;
+        }
+        const selected = getSelectedNode();
+        if (!selected) {
+          return;
+        }
+        selected.text = update.state.doc.toString();
+        requestAutosave();
+      })
+    ]
+  });
+  textEditorView = new EditorView({
+    state: initialState,
+    parent: textEditor
+  });
+  return textEditorView;
+}
+
+function setEditorText(value: string): void {
+  const editor = ensureTextEditor();
+  const current = editor.state.doc.toString();
+  if (current === value) {
+    return;
+  }
+  syncingEditor = true;
+  editor.dispatch({
+    changes: {
+      from: 0,
+      to: editor.state.doc.length,
+      insert: value
+    }
+  });
+  syncingEditor = false;
 }
 
 function findNode(id: string): IEditNode | undefined {
@@ -309,7 +367,7 @@ function syncSelectionUI(): void {
     return;
   }
   const selected = getSelectedNode();
-  textEditor.value = selected?.text ?? "";
+  setEditorText(selected?.text ?? "");
   shapeSelect.value = selected?.shape ?? "box";
   populateLinkTargetOptions();
   populateEditableLinkOptions();
@@ -548,15 +606,6 @@ shapeSelect.addEventListener("change", () => {
   requestAutosave();
 });
 
-textEditor.addEventListener("input", () => {
-  const selected = getSelectedNode();
-  if (!selected) {
-    return;
-  }
-  selected.text = textEditor.value;
-  requestAutosave();
-});
-
 linkBtn.addEventListener("click", () => {
   if (!state) {
     return;
@@ -662,6 +711,7 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
     const payload = message.payload as { document: IEditDocument; path: string };
     state = payload.document;
     docPathEl.textContent = payload.path;
+    ensureTextEditor();
     syncSelectionUI();
     render();
   }
