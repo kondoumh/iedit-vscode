@@ -733,7 +733,7 @@ function requestAutosave(): void {
     if (!state) {
       return;
     }
-    vscode.postMessage({ type: "saveDocument", payload: state });
+    vscode.postMessage({ type: "updateDocument", payload: state });
   }, 600);
 }
 
@@ -880,10 +880,7 @@ deleteLinkBtn.addEventListener("click", () => {
 });
 
 saveBtn.addEventListener("click", () => {
-  if (!state) {
-    return;
-  }
-  vscode.postMessage({ type: "saveDocument", payload: state });
+  vscode.postMessage({ type: "requestSave" });
 });
 
 network.on("click", (event) => {

@@ -13,9 +13,24 @@
   ],
   "activationEvents": [
     "onCommand:iedit.openPrototype",
-    "onView:iedit.outlineView"
+    "onView:iedit.outlineView",
+    "onCustomEditor:iedit.editor"
   ],
   "contributes": {
+    "customEditors": [
+      {
+        "viewType": "iedit.editor",
+        "displayName": "iEdit Editor",
+        "selector": [
+          {
+            "filenamePattern": "**/.iedit.json"
+          },
+          {
+            "filenamePattern": "**/*.iedit.json"
+          }
+        ]
+      }
+    ],
     "views": {
       "explorer": [
         {

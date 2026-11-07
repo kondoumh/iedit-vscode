@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+const IEDIT_VIEW_TYPE = "iedit.editor";
+
 type NodeShape = "box" | "ellipse" | "roundbox";
 
 interface IEditNode {
@@ -76,42 +78,24 @@ function defaultDocument(): IEditDocument {
   };
 }
 
+function serializeDocument(document: IEditDocument): string {
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+function parseDocumentText(text: string): IEditDocument {
+  const parsed = JSON.parse(text) as IEditDocument;
+  if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.links) || typeof parsed.selectedNodeId !== "string") {
+    throw new Error("Invalid iEdit document");
+  }
+  return parsed;
+}
+
 function getDocumentUri(): vscode.Uri | undefined {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
     return undefined;
   }
   return vscode.Uri.joinPath(folder.uri, ".iedit.json");
-}
-
-async function loadDocument(): Promise<{ uri: vscode.Uri | undefined; doc: IEditDocument }> {
-  const uri = getDocumentUri();
-  if (!uri) {
-    return { uri: undefined, doc: defaultDocument() };
-  }
-
-  try {
-    const bytes = await vscode.workspace.fs.readFile(uri);
-    const json = Buffer.from(bytes).toString("utf8");
-    const parsed = JSON.parse(json) as IEditDocument;
-    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.links) || typeof parsed.selectedNodeId !== "string") {
-      throw new Error("Invalid iEdit document");
-    }
-    return { uri, doc: parsed };
-  } catch (error) {
-    if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") {
-      return { uri, doc: defaultDocument() };
-    }
-    throw error;
-  }
-}
-
-async function saveDocument(uri: vscode.Uri | undefined, doc: IEditDocument): Promise<void> {
-  if (!uri) {
-    throw new Error("No workspace folder is open. Open a folder to save .iedit.json.");
-  }
-  const payload = JSON.stringify(doc, null, 2);
-  await vscode.workspace.fs.writeFile(uri, Buffer.from(payload, "utf8"));
 }
 
 function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
@@ -132,24 +116,20 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 </html>`;
 }
 
+function fullDocumentRange(document: vscode.TextDocument): vscode.Range {
+  const lastLine = document.lineAt(document.lineCount - 1);
+  return new vscode.Range(0, 0, document.lineCount - 1, lastLine.text.length);
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   let panel: vscode.WebviewPanel | undefined;
+  let activeTextDocument: vscode.TextDocument | undefined;
   let loaded = { uri: getDocumentUri(), doc: defaultDocument() };
   const outlineProvider = new IEditOutlineProvider(() => loaded.doc);
   const outlineView = vscode.window.createTreeView("iedit.outlineView", {
     treeDataProvider: outlineProvider,
     showCollapseAll: true
   });
-
-  const postSelectionToWebview = async (): Promise<void> => {
-    if (!panel) {
-      return;
-    }
-    await panel.webview.postMessage({
-      type: "externalSelectNode",
-      payload: { nodeId: loaded.doc.selectedNodeId }
-    });
-  };
 
   const postDocumentToWebview = async (): Promise<void> => {
     if (!panel) {
@@ -161,8 +141,39 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   };
 
+  const postSelectionToWebview = async (): Promise<void> => {
+    if (!panel) {
+      return;
+    }
+    await panel.webview.postMessage({
+      type: "externalSelectNode",
+      payload: { nodeId: loaded.doc.selectedNodeId }
+    });
+  };
+
+  const applyDocumentToTextDocument = async (
+    document: vscode.TextDocument,
+    nextDocument: IEditDocument
+  ): Promise<void> => {
+    const nextText = serializeDocument(nextDocument);
+    if (document.getText() === nextText) {
+      return;
+    }
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(document.uri, fullDocumentRange(document), nextText);
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      throw new Error("Failed to apply iEdit document change");
+    }
+  };
+
   const persistOutlineChange = async (): Promise<void> => {
-    await saveDocument(loaded.uri, loaded.doc);
+    const document = activeTextDocument ?? (loaded.uri ? await vscode.workspace.openTextDocument(loaded.uri) : undefined);
+    if (!document) {
+      return;
+    }
+    activeTextDocument = document;
+    await applyDocumentToTextDocument(document, loaded.doc);
     outlineProvider.refresh();
     await postDocumentToWebview();
   };
@@ -235,8 +246,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (targetIndexes.length === 0) {
       return;
     }
-    const insertIndex =
-      direction < 0 ? targetIndexes[0] : targetIndexes[targetIndexes.length - 1] + 1;
+    const insertIndex = direction < 0 ? targetIndexes[0] : targetIndexes[targetIndexes.length - 1] + 1;
     moveSubtreeBlock(sourceNode.id, insertIndex);
     loaded.doc.selectedNodeId = sourceNode.id;
     await persistOutlineChange();
@@ -303,7 +313,7 @@ export function activate(context: vscode.ExtensionContext): void {
     outlineView,
     outlineView.onDidChangeSelection(async (event) => {
       const selected = event.selection[0];
-      if (!selected) {
+      if (!selected || loaded.doc.selectedNodeId === selected.id) {
         return;
       }
       loaded.doc.selectedNodeId = selected.id;
@@ -312,85 +322,127 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  const openDisposable = vscode.commands.registerCommand("iedit.openPrototype", async () => {
-    if (panel) {
-      panel.reveal(vscode.ViewColumn.One);
-      await postDocumentToWebview();
-      return;
-    }
+  const customEditorProvider: vscode.CustomTextEditorProvider = {
+    resolveCustomTextEditor(document, webviewPanel): void {
+      panel = webviewPanel;
+      activeTextDocument = document;
+      loaded.uri = document.uri;
 
-    panel = vscode.window.createWebviewPanel("ieditPrototype", "iEdit Prototype", vscode.ViewColumn.One, {
-      enableScripts: true,
-      retainContextWhenHidden: true
-    });
-    panel.webview.html = getHtml(panel.webview, context.extensionUri);
-
-    panel.onDidDispose(() => {
-      panel = undefined;
-    });
-
-    try {
-      loaded = await loadDocument();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to load iEdit document: ${message}`);
-      loaded = { uri: getDocumentUri(), doc: defaultDocument() };
-    }
-    outlineProvider.refresh();
-
-    panel.webview.onDidReceiveMessage(async (message: unknown) => {
-      if (typeof message !== "object" || message === null || !("type" in message)) {
-        return;
+      try {
+        loaded.doc = parseDocumentText(document.getText());
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`Failed to parse iEdit document: ${message}`);
+        loaded.doc = defaultDocument();
       }
-      const typed = message as { type: string; payload?: unknown };
-      if (typed.type === "requestInit") {
-        await panel?.webview.postMessage({
-          type: "init",
-          payload: { document: loaded.doc, path: loaded.uri?.fsPath ?? "(unsaved)" }
-        });
-        return;
-      }
-      if (typed.type === "selectionChanged") {
-        const payload = typed.payload as { nodeId: string };
-        loaded.doc.selectedNodeId = payload.nodeId;
-        outlineProvider.refresh();
-        const node = outlineProvider.findNode(payload.nodeId);
-        if (node) {
-          await outlineView.reveal(node, { select: true, focus: false, expand: true });
+
+      webviewPanel.webview.options = { enableScripts: true };
+      webviewPanel.webview.html = getHtml(webviewPanel.webview, context.extensionUri);
+      outlineProvider.refresh();
+      void postDocumentToWebview();
+
+      const textChangeDisposable = vscode.workspace.onDidChangeTextDocument(async (event) => {
+        if (event.document.uri.toString() !== document.uri.toString()) {
+          return;
         }
-        return;
-      }
-      if (typed.type === "saveDocument") {
+        activeTextDocument = event.document;
         try {
-          const payload = typed.payload as IEditDocument;
-          await saveDocument(loaded.uri, payload);
-          loaded.doc = payload;
+          loaded.doc = parseDocumentText(event.document.getText());
           outlineProvider.refresh();
-          await panel?.webview.postMessage({ type: "saved" });
+          await postDocumentToWebview();
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          await panel?.webview.postMessage({ type: "saveFailed", payload: message });
-          vscode.window.showErrorMessage(`Failed to save iEdit document: ${message}`);
+          vscode.window.showErrorMessage(`Failed to parse iEdit document update: ${message}`);
         }
-        return;
-      }
-      if (typed.type === "requestInput") {
-        const payload = typed.payload as InputRequestPayload;
-        const input = await vscode.window.showInputBox({
-          title: payload.title,
-          value: payload.value,
-          placeHolder: payload.placeHolder
-        });
-        await panel?.webview.postMessage({
-          type: "promptResult",
-          payload: {
-            requestId: payload.requestId,
-            cancelled: input === undefined,
-            value: input ?? ""
+      });
+
+      const messageDisposable = webviewPanel.webview.onDidReceiveMessage(async (message: unknown) => {
+        if (typeof message !== "object" || message === null || !("type" in message)) {
+          return;
+        }
+        const typed = message as { type: string; payload?: unknown };
+        if (typed.type === "requestInit") {
+          await postDocumentToWebview();
+          return;
+        }
+        if (typed.type === "selectionChanged") {
+          const payload = typed.payload as { nodeId: string };
+          if (loaded.doc.selectedNodeId === payload.nodeId) {
+            return;
           }
-        });
-      }
-    });
+          loaded.doc.selectedNodeId = payload.nodeId;
+          outlineProvider.refresh();
+          const node = outlineProvider.findNode(payload.nodeId);
+          if (node) {
+            await outlineView.reveal(node, { select: true, focus: false, expand: true });
+          }
+          return;
+        }
+        if (typed.type === "updateDocument") {
+          const payload = typed.payload as IEditDocument;
+          loaded.doc = payload;
+          try {
+            await applyDocumentToTextDocument(document, payload);
+            outlineProvider.refresh();
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to update iEdit document: ${message}`);
+          }
+          return;
+        }
+        if (typed.type === "requestSave") {
+          const saved = await document.save();
+          if (saved) {
+            await webviewPanel.webview.postMessage({ type: "saved" });
+          } else {
+            await webviewPanel.webview.postMessage({ type: "saveFailed", payload: "Save was cancelled or failed" });
+          }
+          return;
+        }
+        if (typed.type === "requestInput") {
+          const payload = typed.payload as InputRequestPayload;
+          const input = await vscode.window.showInputBox({
+            title: payload.title,
+            value: payload.value,
+            placeHolder: payload.placeHolder
+          });
+          await webviewPanel.webview.postMessage({
+            type: "promptResult",
+            payload: {
+              requestId: payload.requestId,
+              cancelled: input === undefined,
+              value: input ?? ""
+            }
+          });
+        }
+      });
+
+      const disposeDisposable = webviewPanel.onDidDispose(() => {
+        if (panel === webviewPanel) {
+          panel = undefined;
+        }
+      });
+
+      context.subscriptions.push(textChangeDisposable, messageDisposable, disposeDisposable);
+    }
+  };
+
+  const customEditorDisposable = vscode.window.registerCustomEditorProvider(IEDIT_VIEW_TYPE, customEditorProvider, {
+    webviewOptions: { retainContextWhenHidden: true }
+  });
+
+  const openDisposable = vscode.commands.registerCommand("iedit.openPrototype", async () => {
+    const uri = getDocumentUri();
+    if (!uri) {
+      vscode.window.showErrorMessage("Open a workspace folder before opening iEdit.");
+      return;
+    }
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(serializeDocument(defaultDocument()), "utf8"));
+    }
+    await vscode.commands.executeCommand("vscode.openWith", uri, IEDIT_VIEW_TYPE, vscode.ViewColumn.One);
   });
 
   const moveUpDisposable = vscode.commands.registerCommand("iedit.outline.moveUp", async (target?: IEditNode) => {
@@ -413,6 +465,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    customEditorDisposable,
     openDisposable,
     moveUpDisposable,
     moveDownDisposable,

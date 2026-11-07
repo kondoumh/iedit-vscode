@@ -13,7 +13,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 - 選択ノードの Markdown テキスト編集（シンタックスハイライト）
 - 3ビューの選択同期
 - ペイン境界のドラッグ調整（左右 / 上下）
-- 自動保存（変更後デバウンス）
+- VS Code 標準の保存/ダーティ管理/Undo・Redo（Custom Editor 経由）
 - ワークスペース直下の `.iedit.json` への保存
 
 ## 使い方
@@ -27,7 +27,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
    npm run build
    ```
 3. VS Code でこのフォルダを開き、`F5` で Extension Development Host を起動
-4. コマンドパレットから `iEdit: Open Prototype` を実行
+4. コマンドパレットから `iEdit: Open Prototype` を実行（`.iedit.json` を Custom Editor で開く）
 
 ## ドキュメント形式
 
