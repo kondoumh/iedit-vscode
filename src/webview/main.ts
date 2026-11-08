@@ -181,6 +181,7 @@ app.innerHTML = `
   </select>
   <div class="spacer"></div>
   <div class="network-controls">
+    <button id="linkModeBtn">Link Mode: OFF</button>
     <select id="linkToSelect"></select>
     <button id="linkBtn">Link</button>
     <select id="linkSelect"></select>
@@ -217,6 +218,7 @@ const deleteBtn = document.getElementById("deleteBtn") as HTMLButtonElement;
 const renameBtn = document.getElementById("renameBtn") as HTMLButtonElement;
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLSpanElement;
+const linkModeBtn = document.getElementById("linkModeBtn") as HTMLButtonElement;
 const linkBtn = document.getElementById("linkBtn") as HTMLButtonElement;
 const linkToSelect = document.getElementById("linkToSelect") as HTMLSelectElement;
 const linkSelect = document.getElementById("linkSelect") as HTMLSelectElement;
@@ -246,6 +248,8 @@ let autosaveTimer: number | undefined;
 const pendingInputRequests = new Map<string, (value: string | null) => void>();
 let textEditorView: EditorView | undefined;
 let syncingEditor = false;
+let isLinkModeActive = false;
+let linkModeSourceNodeId: string | null = null;
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -265,6 +269,10 @@ function requestInput(options: { title: string; value: string; placeHolder?: str
       }
     });
   });
+}
+
+function updateLinkModeUI(): void {
+  linkModeBtn.textContent = isLinkModeActive ? "Link Mode: ON" : "Link Mode: OFF";
 }
 
 function notifySelectionChanged(): void {
@@ -497,13 +505,23 @@ function renderNetwork(): void {
     x: node.x,
     y: node.y,
     shape: node.shape ?? "box",
-    color:
-      node.id === state!.selectedNodeId
-        ? {
-            background: "rgb(38, 79, 120)",
-            border: "rgb(80, 130, 190)"
-          }
-        : undefined
+    color: (() => {
+      const isSelected = node.id === state!.selectedNodeId;
+      const isLinkSource = isLinkModeActive && linkModeSourceNodeId === node.id;
+      if (isLinkSource) {
+        return {
+          background: "rgb(150, 96, 34)",
+          border: "rgb(222, 153, 64)"
+        };
+      }
+      if (isSelected) {
+        return {
+          background: "rgb(38, 79, 120)",
+          border: "rgb(80, 130, 190)"
+        };
+      }
+      return undefined;
+    })()
   }));
 
   const visEdges = state.links
@@ -722,6 +740,35 @@ function setStatus(text: string): void {
   }
 }
 
+function resetLinkModeSource(): void {
+  linkModeSourceNodeId = null;
+}
+
+function addLink(sourceId: string, targetId: string): boolean {
+  if (!state) {
+    return false;
+  }
+  if (sourceId === targetId) {
+    setStatus("Cannot link to same node");
+    return false;
+  }
+  const already = state.links.find((link) => link.source === sourceId && link.target === targetId);
+  if (already) {
+    setStatus("Link already exists");
+    return false;
+  }
+  state.links.push({
+    id: `l-${uuid()}`,
+    source: sourceId,
+    target: targetId
+  });
+  renderNetwork();
+  populateEditableLinkOptions();
+  setStatus("Linked");
+  requestAutosave();
+  return true;
+}
+
 function requestAutosave(): void {
   if (!state) {
     return;
@@ -826,20 +873,19 @@ linkBtn.addEventListener("click", () => {
   if (!selected || !target) {
     return;
   }
-  const already = state.links.find((link) => link.source === selected.id && link.target === target);
-  if (already) {
-    setStatus("Link already exists");
-    return;
-  }
-  state.links.push({
-    id: `l-${uuid()}`,
-    source: selected.id,
-    target
-  });
+  addLink(selected.id, target);
+});
+
+linkModeBtn.addEventListener("click", () => {
+  isLinkModeActive = !isLinkModeActive;
+  resetLinkModeSource();
+  updateLinkModeUI();
   renderNetwork();
-  populateEditableLinkOptions();
-  setStatus("Linked");
-  requestAutosave();
+  if (isLinkModeActive) {
+    setStatus("Link mode: click source node");
+  } else {
+    setStatus("Link mode off");
+  }
 });
 
 editLinkBtn.addEventListener("click", async () => {
@@ -891,7 +937,32 @@ network.on("click", (event) => {
   if (!first) {
     return;
   }
-  setSelectedNode(first as string);
+  const clickedNodeId = first as string;
+  if (!isLinkModeActive) {
+    setSelectedNode(clickedNodeId);
+    return;
+  }
+
+  if (!linkModeSourceNodeId) {
+    linkModeSourceNodeId = clickedNodeId;
+    setSelectedNode(clickedNodeId);
+    const sourceLabel = findNode(clickedNodeId)?.label ?? clickedNodeId;
+    setStatus(`Link mode: source = ${sourceLabel}. Click target node`);
+    return;
+  }
+
+  if (linkModeSourceNodeId === clickedNodeId) {
+    setStatus("Link mode: source reselected, choose different target");
+    return;
+  }
+
+  const sourceNodeId = linkModeSourceNodeId;
+  resetLinkModeSource();
+  setSelectedNode(clickedNodeId);
+  const created = addLink(sourceNodeId, clickedNodeId);
+  if (created) {
+    setStatus("Linked (link mode)");
+  }
 });
 
 network.on("dragEnd", (event) => {
@@ -944,3 +1015,4 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 
 vscode.postMessage({ type: "requestInit" });
 setupPaneResizers();
+updateLinkModeUI();

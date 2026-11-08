@@ -9,6 +9,8 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 - `iEdit Outline` のコンテキストメニューで Move Up / Move Down / Indent / Outdent
 - ツールバーの ↑ / ↓ / → / ← で Move Up / Move Down / Indent / Outdent
 - 同階層ノードのネットワーク表示（ノード移動、リンク追加）
+- Link Mode（2クリック）で直感的なリンク作成
+- Link Mode で始点ノードをネットワーク上にハイライト表示
 - リンク編集（ラベル変更、削除）
 - 選択ノードの Markdown テキスト編集（シンタックスハイライト）
 - 3ビューの選択同期
