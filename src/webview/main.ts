@@ -250,6 +250,8 @@ let textEditorView: EditorView | undefined;
 let syncingEditor = false;
 let isLinkModeActive = false;
 let linkModeSourceNodeId: string | null = null;
+let imozuruDragContext: { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> } | null = null;
+const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -479,6 +481,130 @@ function getLevelNodes(): IEditNode[] {
     return getChildren(null);
   }
   return getChildren(selected.parentId);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getNetworkNodePosition(nodeId: string): { x: number; y: number } {
+  const position = network.getPosition(nodeId);
+  return { x: position.x, y: position.y };
+}
+
+function getVisibleLevelLinks(): IEditLink[] {
+  if (!state) {
+    return [];
+  }
+  const levelIds = new Set(getLevelNodes().map((node) => node.id));
+  return state.links.filter((link) => levelIds.has(link.source) && levelIds.has(link.target));
+}
+
+function buildImozuruDragContext(anchorId: string): { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> } | null {
+  if (!state) {
+    return null;
+  }
+  const levelNodeIds = new Set(getLevelNodes().map((node) => node.id));
+  if (!levelNodeIds.has(anchorId)) {
+    return null;
+  }
+
+  const links = getVisibleLevelLinks();
+  const adjacency = new Map<string, Set<string>>();
+  for (const nodeId of levelNodeIds) {
+    adjacency.set(nodeId, new Set());
+  }
+  for (const link of links) {
+    adjacency.get(link.source)?.add(link.target);
+    adjacency.get(link.target)?.add(link.source);
+  }
+
+  const connectedNodeIds = new Set<string>();
+  const queue: string[] = [anchorId];
+  connectedNodeIds.add(anchorId);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = adjacency.get(current) ?? new Set<string>();
+    for (const neighbor of neighbors) {
+      if (connectedNodeIds.has(neighbor)) {
+        continue;
+      }
+      connectedNodeIds.add(neighbor);
+      queue.push(neighbor);
+    }
+  }
+  if (connectedNodeIds.size <= 1) {
+    return null;
+  }
+
+  const edges = links
+    .filter((link) => connectedNodeIds.has(link.source) && connectedNodeIds.has(link.target))
+    .map((link) => {
+      const source = getNetworkNodePosition(link.source);
+      const target = getNetworkNodePosition(link.target);
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const distance = Math.hypot(dx, dy);
+      return {
+        a: link.source,
+        b: link.target,
+        rest: clamp(distance || 140, 80, 240)
+      };
+    });
+
+  return { anchorId, nodeIds: connectedNodeIds, edges };
+}
+
+function applyImozuruSpringStep(context: { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> }): void {
+  if (!state) {
+    return;
+  }
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const nodeId of context.nodeIds) {
+    positions.set(nodeId, getNetworkNodePosition(nodeId));
+  }
+
+  const springStrength = 0.16;
+  const iterations = 2;
+  for (let i = 0; i < iterations; i += 1) {
+    for (const edge of context.edges) {
+      const a = positions.get(edge.a);
+      const b = positions.get(edge.b);
+      if (!a || !b) {
+        continue;
+      }
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const distance = Math.hypot(dx, dy) || 0.0001;
+      const force = (distance - edge.rest) * springStrength;
+      const ux = dx / distance;
+      const uy = dy / distance;
+      const moveA = edge.a === context.anchorId ? 0 : edge.b === context.anchorId ? 1 : 0.5;
+      const moveB = edge.b === context.anchorId ? 0 : edge.a === context.anchorId ? 1 : 0.5;
+      a.x += ux * force * moveA;
+      a.y += uy * force * moveA;
+      b.x -= ux * force * moveB;
+      b.y -= uy * force * moveB;
+    }
+  }
+
+  for (const [nodeId, position] of positions.entries()) {
+    if (nodeId === context.anchorId) {
+      continue;
+    }
+    const node = findNode(nodeId);
+    if (!node) {
+      continue;
+    }
+    node.x = position.x;
+    node.y = position.y;
+    network.moveNode(nodeId, position.x, position.y);
+  }
+}
+
+function isImozuruModifierPressed(event: unknown): boolean {
+  const srcEvent = (event as { event?: { srcEvent?: { ctrlKey?: boolean; metaKey?: boolean } } })?.event?.srcEvent;
+  return isMacPlatform ? Boolean(srcEvent?.metaKey) : Boolean(srcEvent?.ctrlKey);
 }
 
 function syncSelectionUI(): void {
@@ -969,7 +1095,12 @@ network.on("dragEnd", (event) => {
   if (!state) {
     return;
   }
-  const moved = event.nodes as string[];
+  const moved = new Set<string>(event.nodes as string[]);
+  if (imozuruDragContext) {
+    for (const nodeId of imozuruDragContext.nodeIds) {
+      moved.add(nodeId);
+    }
+  }
   for (const id of moved) {
     const position = network.getPosition(id);
     const node = findNode(id);
@@ -979,7 +1110,29 @@ network.on("dragEnd", (event) => {
     node.x = position.x;
     node.y = position.y;
   }
+  imozuruDragContext = null;
   requestAutosave();
+});
+
+network.on("dragStart", (event) => {
+  const movedNodeId = (event.nodes as string[])[0];
+  if (!movedNodeId || !isImozuruModifierPressed(event)) {
+    imozuruDragContext = null;
+    return;
+  }
+  const nextContext = buildImozuruDragContext(movedNodeId);
+  imozuruDragContext = nextContext;
+  if (nextContext) {
+    setStatus("Imozuru mode: spring-follow dragging");
+  }
+});
+
+network.on("dragging", (event) => {
+  const movedNodeId = (event.nodes as string[])[0];
+  if (!movedNodeId || !imozuruDragContext || movedNodeId !== imozuruDragContext.anchorId) {
+    return;
+  }
+  applyImozuruSpringStep(imozuruDragContext);
 });
 
 window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
