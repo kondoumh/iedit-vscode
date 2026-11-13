@@ -164,6 +164,29 @@ app.innerHTML = `
     border-radius: 4px;
     padding: 4px 6px;
   }
+  .context-menu {
+    position: fixed;
+    z-index: 1000;
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    background: var(--vscode-menu-background, var(--vscode-editor-background));
+    border-radius: 6px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+  }
+  .context-menu.hidden {
+    display: none;
+  }
+  .context-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+  }
+  .context-menu button:hover {
+    background: var(--vscode-list-hoverBackground);
+  }
 </style>
 <div class="toolbar">
   <button id="addChildBtn">+ Child</button>
@@ -203,6 +226,9 @@ app.innerHTML = `
     <div id="textEditor"></div>
   </div>
 </div>
+<div id="networkContextMenu" class="context-menu hidden">
+  <button id="networkMenuAddSiblingBtn">Add Sibling</button>
+</div>
 `;
 
 const treeEl = document.getElementById("tree") as HTMLDivElement;
@@ -228,6 +254,8 @@ const shapeSelect = document.getElementById("shapeSelect") as HTMLSelectElement;
 const networkEl = document.getElementById("network") as HTMLDivElement;
 const verticalSplitter = document.getElementById("verticalSplitter") as HTMLDivElement;
 const horizontalSplitter = document.getElementById("horizontalSplitter") as HTMLDivElement;
+const networkContextMenu = document.getElementById("networkContextMenu") as HTMLDivElement;
+const networkMenuAddSiblingBtn = document.getElementById("networkMenuAddSiblingBtn") as HTMLButtonElement;
 
 const nodesData = new DataSet<Record<string, unknown>>();
 const edgesData = new DataSet<Record<string, unknown>>();
@@ -252,6 +280,7 @@ let isLinkModeActive = false;
 let linkModeSourceNodeId: string | null = null;
 let imozuruDragContext: { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> } | null = null;
 const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
+let networkContextMenuCanvasPosition: { x: number; y: number } | null = null;
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -707,7 +736,7 @@ function populateEditableLinkOptions(): void {
   }
 }
 
-function addNode(parentId: string | null): void {
+function addNode(parentId: string | null, position?: { x: number; y: number }): void {
   if (!state) {
     return;
   }
@@ -717,7 +746,9 @@ function addNode(parentId: string | null): void {
     parentId,
     label: "New Node",
     text: "",
-    shape: "box"
+    shape: "box",
+    x: position?.x,
+    y: position?.y
   });
   state.selectedNodeId = id;
   notifySelectionChanged();
@@ -895,6 +926,27 @@ function addLink(sourceId: string, targetId: string): boolean {
   return true;
 }
 
+function hideNetworkContextMenu(): void {
+  networkContextMenu.classList.add("hidden");
+  networkContextMenuCanvasPosition = null;
+}
+
+function showNetworkContextMenu(clientX: number, clientY: number): void {
+  networkContextMenu.classList.remove("hidden");
+  networkContextMenu.style.left = `${clientX}px`;
+  networkContextMenu.style.top = `${clientY}px`;
+}
+
+function addSiblingFromSelection(position?: { x: number; y: number }): void {
+  const selected = getSelectedNode();
+  if (!selected || selected.parentId === null) {
+    setStatus("Select a non-root node to add sibling");
+    return;
+  }
+  addNode(selected.parentId, position);
+  requestAutosave();
+}
+
 function requestAutosave(): void {
   if (!state) {
     return;
@@ -920,12 +972,7 @@ addChildBtn.addEventListener("click", () => {
 });
 
 addSiblingBtn.addEventListener("click", () => {
-  const selected = getSelectedNode();
-  if (!selected || selected.parentId === null) {
-    return;
-  }
-  addNode(selected.parentId);
-  requestAutosave();
+  addSiblingFromSelection();
 });
 
 moveUpBtn.addEventListener("click", () => {
@@ -1055,7 +1102,37 @@ saveBtn.addEventListener("click", () => {
   vscode.postMessage({ type: "requestSave" });
 });
 
+networkEl.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  const rect = networkEl.getBoundingClientRect();
+  const domPoint = {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  };
+  const clickedNodeId = network.getNodeAt(domPoint);
+  if (clickedNodeId) {
+    hideNetworkContextMenu();
+    return;
+  }
+  networkContextMenuCanvasPosition = network.DOMtoCanvas(domPoint);
+  showNetworkContextMenu(event.clientX, event.clientY);
+});
+
+networkMenuAddSiblingBtn.addEventListener("click", () => {
+  addSiblingFromSelection(networkContextMenuCanvasPosition ?? undefined);
+  hideNetworkContextMenu();
+});
+
+window.addEventListener("click", (event) => {
+  const target = event.target as Node | null;
+  if (target && networkContextMenu.contains(target)) {
+    return;
+  }
+  hideNetworkContextMenu();
+});
+
 network.on("click", (event) => {
+  hideNetworkContextMenu();
   if (!state) {
     return;
   }
@@ -1115,6 +1192,7 @@ network.on("dragEnd", (event) => {
 });
 
 network.on("dragStart", (event) => {
+  hideNetworkContextMenu();
   const movedNodeId = (event.nodes as string[])[0];
   if (!movedNodeId || !isImozuruModifierPressed(event)) {
     imozuruDragContext = null;
