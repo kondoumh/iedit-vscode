@@ -15,6 +15,7 @@ interface IEditNode {
   x?: number;
   y?: number;
   shape?: NodeShape;
+  nodeColor?: string;
 }
 
 interface IEditLink {
@@ -187,6 +188,14 @@ app.innerHTML = `
   .context-menu button:hover {
     background: var(--vscode-list-hoverBackground);
   }
+  .color-panel {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hidden {
+    display: none;
+  }
 </style>
 <div class="toolbar">
   <button id="addChildBtn">+ Child</button>
@@ -197,6 +206,12 @@ app.innerHTML = `
   <button id="outdentBtn">←</button>
   <button id="deleteBtn">Delete</button>
   <button id="renameBtn">Rename</button>
+  <button id="nodeColorBtn">Node Color</button>
+  <div id="nodeColorPanel" class="color-panel hidden">
+    <input id="nodeColorInput" type="color" />
+    <button id="applyNodeColorBtn">Apply</button>
+    <button id="clearNodeColorBtn">Clear</button>
+  </div>
   <select id="shapeSelect">
     <option value="box">Box</option>
     <option value="roundbox">RoundBox</option>
@@ -242,6 +257,11 @@ const indentBtn = document.getElementById("indentBtn") as HTMLButtonElement;
 const outdentBtn = document.getElementById("outdentBtn") as HTMLButtonElement;
 const deleteBtn = document.getElementById("deleteBtn") as HTMLButtonElement;
 const renameBtn = document.getElementById("renameBtn") as HTMLButtonElement;
+const nodeColorBtn = document.getElementById("nodeColorBtn") as HTMLButtonElement;
+const nodeColorPanel = document.getElementById("nodeColorPanel") as HTMLDivElement;
+const nodeColorInput = document.getElementById("nodeColorInput") as HTMLInputElement;
+const applyNodeColorBtn = document.getElementById("applyNodeColorBtn") as HTMLButtonElement;
+const clearNodeColorBtn = document.getElementById("clearNodeColorBtn") as HTMLButtonElement;
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLSpanElement;
 const linkModeBtn = document.getElementById("linkModeBtn") as HTMLButtonElement;
@@ -281,6 +301,7 @@ let linkModeSourceNodeId: string | null = null;
 let imozuruDragContext: { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> } | null = null;
 const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
 let networkContextMenuCanvasPosition: { x: number; y: number } | null = null;
+const DEFAULT_NODE_COLOR = "#97c2fc";
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -642,6 +663,7 @@ function syncSelectionUI(): void {
   }
   const selected = getSelectedNode();
   setEditorText(selected?.text ?? "");
+  nodeColorInput.value = selected?.nodeColor ?? DEFAULT_NODE_COLOR;
   shapeSelect.value = selected?.shape ?? "box";
   populateLinkTargetOptions();
   populateEditableLinkOptions();
@@ -669,13 +691,20 @@ function renderNetwork(): void {
           border: "rgb(222, 153, 64)"
         };
       }
+      const background = node.nodeColor ?? DEFAULT_NODE_COLOR;
       if (isSelected) {
         return {
-          background: "rgb(38, 79, 120)",
+          background,
           border: "rgb(80, 130, 190)"
         };
       }
-      return undefined;
+      if (node.nodeColor) {
+        return {
+          background: node.nodeColor,
+          border: "rgb(120, 120, 120)"
+        };
+      }
+      return { background };
     })()
   }));
 
@@ -1025,6 +1054,33 @@ renameBtn.addEventListener("click", async () => {
   render();
   syncSelectionUI();
   requestAutosave();
+});
+
+nodeColorBtn.addEventListener("click", () => {
+  nodeColorPanel.classList.toggle("hidden");
+});
+
+applyNodeColorBtn.addEventListener("click", () => {
+  const selected = getSelectedNode();
+  if (!selected) {
+    return;
+  }
+  selected.nodeColor = nodeColorInput.value;
+  renderNetwork();
+  requestAutosave();
+  setStatus("Node color applied");
+});
+
+clearNodeColorBtn.addEventListener("click", () => {
+  const selected = getSelectedNode();
+  if (!selected) {
+    return;
+  }
+  selected.nodeColor = undefined;
+  nodeColorInput.value = DEFAULT_NODE_COLOR;
+  renderNetwork();
+  requestAutosave();
+  setStatus("Node color cleared");
 });
 
 shapeSelect.addEventListener("change", () => {
