@@ -1254,6 +1254,11 @@ network.on("click", (event) => {
   }
 
   if (clickedEdgeId) {
+    if (first) {
+      const clickedNodeId = first as string;
+      setSelectedNode(clickedNodeId);
+      return;
+    }
     selectedLinkId = clickedEdgeId;
     populateEditableLinkOptions();
     if (edgesData.get(clickedEdgeId)) {
