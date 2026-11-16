@@ -301,6 +301,7 @@ let linkModeSourceNodeId: string | null = null;
 let imozuruDragContext: { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> } | null = null;
 const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
 let networkContextMenuCanvasPosition: { x: number; y: number } | null = null;
+let selectedLinkId: string | null = null;
 const DEFAULT_NODE_COLOR = "#97c2fc";
 
 function uuid(): string {
@@ -550,6 +551,10 @@ function getVisibleLevelLinks(): IEditLink[] {
   return state.links.filter((link) => levelIds.has(link.source) && levelIds.has(link.target));
 }
 
+function getEditableLinks(): IEditLink[] {
+  return getVisibleLevelLinks();
+}
+
 function buildImozuruDragContext(anchorId: string): { anchorId: string; nodeIds: Set<string>; edges: Array<{ a: string; b: string; rest: number }> } | null {
   if (!state) {
     return null;
@@ -716,6 +721,11 @@ function renderNetwork(): void {
   edgesData.clear();
   nodesData.add(visNodes);
   edgesData.add(visEdges);
+  if (selectedLinkId && edgesData.get(selectedLinkId)) {
+    network.selectEdges([selectedLinkId]);
+  } else {
+    selectedLinkId = null;
+  }
 }
 
 function render(): void {
@@ -749,12 +759,8 @@ function populateEditableLinkOptions(): void {
     return;
   }
   const selected = getSelectedNode();
-  const levelNodeIds = new Set(getLevelNodes().map((node) => node.id));
   linkSelect.innerHTML = "";
-  const editable = state.links.filter((link) => {
-    const sameLevel = levelNodeIds.has(link.source) && levelNodeIds.has(link.target);
-    return sameLevel && (link.source === selected?.id || link.target === selected?.id);
-  });
+  const editable = getEditableLinks();
   for (const link of editable) {
     const source = findNode(link.source)?.label ?? link.source;
     const target = findNode(link.target)?.label ?? link.target;
@@ -763,6 +769,21 @@ function populateEditableLinkOptions(): void {
     option.textContent = `${source} -> ${target}${link.label ? ` (${link.label})` : ""}`;
     linkSelect.append(option);
   }
+
+  if (editable.length === 0) {
+    selectedLinkId = null;
+    return;
+  }
+
+  const selectedExists = selectedLinkId ? editable.some((link) => link.id === selectedLinkId) : false;
+  if (selectedExists && selectedLinkId) {
+    linkSelect.value = selectedLinkId;
+    return;
+  }
+
+  const adjacent = selected ? editable.find((link) => link.source === selected.id || link.target === selected.id) : undefined;
+  selectedLinkId = adjacent?.id ?? editable[0].id;
+  linkSelect.value = selectedLinkId;
 }
 
 function addNode(parentId: string | null, position?: { x: number; y: number }): void {
@@ -943,11 +964,13 @@ function addLink(sourceId: string, targetId: string): boolean {
     setStatus("Link already exists");
     return false;
   }
+  const id = `l-${uuid()}`;
   state.links.push({
-    id: `l-${uuid()}`,
+    id,
     source: sourceId,
     target: targetId
   });
+  selectedLinkId = id;
   renderNetwork();
   populateEditableLinkOptions();
   setStatus("Linked");
@@ -1083,6 +1106,13 @@ clearNodeColorBtn.addEventListener("click", () => {
   setStatus("Node color cleared");
 });
 
+linkSelect.addEventListener("change", () => {
+  selectedLinkId = linkSelect.value || null;
+  if (selectedLinkId && edgesData.get(selectedLinkId)) {
+    network.selectEdges([selectedLinkId]);
+  }
+});
+
 shapeSelect.addEventListener("change", () => {
   const selected = getSelectedNode();
   if (!selected) {
@@ -1148,6 +1178,9 @@ deleteLinkBtn.addEventListener("click", () => {
     return;
   }
   state.links = state.links.filter((link) => link.id !== id);
+  if (selectedLinkId === id) {
+    selectedLinkId = null;
+  }
   renderNetwork();
   populateEditableLinkOptions();
   setStatus("Unlinked");
@@ -1193,35 +1226,47 @@ network.on("click", (event) => {
     return;
   }
   const first = event.nodes[0];
+  const clickedEdgeId = (event.edges as string[])[0];
+
+  if (isLinkModeActive && first) {
+    const clickedNodeId = first as string;
+    if (!linkModeSourceNodeId) {
+      linkModeSourceNodeId = clickedNodeId;
+      setSelectedNode(clickedNodeId);
+      const sourceLabel = findNode(clickedNodeId)?.label ?? clickedNodeId;
+      setStatus(`Link mode: source = ${sourceLabel}. Click target node`);
+      return;
+    }
+
+    if (linkModeSourceNodeId === clickedNodeId) {
+      setStatus("Link mode: source reselected, choose different target");
+      return;
+    }
+
+    const sourceNodeId = linkModeSourceNodeId;
+    resetLinkModeSource();
+    setSelectedNode(clickedNodeId);
+    const created = addLink(sourceNodeId, clickedNodeId);
+    if (created) {
+      setStatus("Linked (link mode)");
+    }
+    return;
+  }
+
+  if (clickedEdgeId) {
+    selectedLinkId = clickedEdgeId;
+    populateEditableLinkOptions();
+    if (edgesData.get(clickedEdgeId)) {
+      network.selectEdges([clickedEdgeId]);
+    }
+    return;
+  }
+
   if (!first) {
     return;
   }
   const clickedNodeId = first as string;
-  if (!isLinkModeActive) {
-    setSelectedNode(clickedNodeId);
-    return;
-  }
-
-  if (!linkModeSourceNodeId) {
-    linkModeSourceNodeId = clickedNodeId;
-    setSelectedNode(clickedNodeId);
-    const sourceLabel = findNode(clickedNodeId)?.label ?? clickedNodeId;
-    setStatus(`Link mode: source = ${sourceLabel}. Click target node`);
-    return;
-  }
-
-  if (linkModeSourceNodeId === clickedNodeId) {
-    setStatus("Link mode: source reselected, choose different target");
-    return;
-  }
-
-  const sourceNodeId = linkModeSourceNodeId;
-  resetLinkModeSource();
   setSelectedNode(clickedNodeId);
-  const created = addLink(sourceNodeId, clickedNodeId);
-  if (created) {
-    setStatus("Linked (link mode)");
-  }
 });
 
 network.on("dragEnd", (event) => {
