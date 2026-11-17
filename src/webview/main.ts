@@ -283,7 +283,7 @@ const network = new Network(
   networkEl,
   { nodes: nodesData, edges: edgesData },
   {
-    interaction: { dragNodes: true },
+    interaction: { dragNodes: true, multiselect: true },
     physics: false,
     edges: {
       arrows: { to: { enabled: true, scaleFactor: 0.7 } }
@@ -1300,7 +1300,11 @@ network.on("dragEnd", (event) => {
 network.on("dragStart", (event) => {
   hideNetworkContextMenu();
   const movedNodeId = (event.nodes as string[])[0];
-  if (!movedNodeId || !isImozuruModifierPressed(event)) {
+  if (!movedNodeId) {
+    imozuruDragContext = null;
+    return;
+  }
+  if (!isImozuruModifierPressed(event)) {
     imozuruDragContext = null;
     return;
   }

@@ -12,6 +12,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 - Link Mode（2クリック）で直感的なリンク作成
 - Link Mode で始点ノードをネットワーク上にハイライト表示
 - 芋づるモード（macOS: ⌘ + ドラッグ / Windows・Linux: Ctrl + ドラッグ）でリンク接続ノードがバネ追従
+- vis-network 標準のマルチセレクト/マルチドラッグ
 - ネットワーク空白部分のコンテキストメニューから Add Sibling
 - Node Color ボタンでカラーピッカーを開き、Apply で選択ノードに色適用
 - ネットワークで選択したエッジを対象に Link Label / Unlink を編集
