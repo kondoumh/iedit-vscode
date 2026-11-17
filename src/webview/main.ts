@@ -3,7 +3,8 @@ import { Network } from "vis-network/standalone";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 
 type NodeShape = "box" | "ellipse" | "roundbox";
 
@@ -303,6 +304,19 @@ const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
 let networkContextMenuCanvasPosition: { x: number; y: number } | null = null;
 let selectedLinkId: string | null = null;
 const DEFAULT_NODE_COLOR = "#97c2fc";
+const markdownHighlightStyle = HighlightStyle.define([
+  { tag: tags.heading, color: "var(--vscode-textPreformat-foreground, #d7ba7d)", fontWeight: "700" },
+  { tag: [tags.emphasis], fontStyle: "italic", color: "var(--vscode-editor-foreground, #d4d4d4)" },
+  { tag: [tags.strong], fontWeight: "700", color: "var(--vscode-editor-foreground, #d4d4d4)" },
+  { tag: [tags.strikethrough], textDecoration: "line-through" },
+  { tag: [tags.link], color: "var(--vscode-textLink-foreground, #4ea1ff)", textDecoration: "underline" },
+  { tag: [tags.url], color: "var(--vscode-textLink-foreground, #4ea1ff)" },
+  { tag: [tags.monospace], color: "var(--vscode-terminal-ansiGreen, #6a9955)" },
+  { tag: [tags.quote], color: "var(--vscode-descriptionForeground, #888888)" },
+  { tag: [tags.list], color: "var(--vscode-editor-foreground, #d4d4d4)" },
+  { tag: [tags.atom, tags.bool], color: "var(--vscode-terminal-ansiYellow, #dcdcaa)" },
+  { tag: [tags.punctuation], color: "var(--vscode-editor-foreground, #d4d4d4)" }
+]);
 
 function uuid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -431,7 +445,7 @@ function ensureTextEditor(): EditorView {
     doc: "",
     extensions: [
       markdown(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(markdownHighlightStyle),
       EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
         if (!update.docChanged || syncingEditor) {

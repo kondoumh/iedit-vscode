@@ -18,6 +18,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 - ネットワークで選択したエッジを対象に Link Label / Unlink を編集
 - リンク編集（ラベル変更、削除）
 - 選択ノードの Markdown テキスト編集（シンタックスハイライト）
+- VS Code テーマ変数に寄せた Markdown ハイライト調整
 - 3ビューの選択同期
 - ペイン境界のドラッグ調整（左右 / 上下）
 - VS Code 標準の保存/ダーティ管理/Undo・Redo（Custom Editor 経由）
