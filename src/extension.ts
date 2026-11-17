@@ -327,6 +327,7 @@ export function activate(context: vscode.ExtensionContext): void {
       panel = webviewPanel;
       activeTextDocument = document;
       loaded.uri = document.uri;
+      let pendingWebviewDocumentUpdates = 0;
 
       try {
         loaded.doc = parseDocumentText(document.getText());
@@ -346,6 +347,9 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         activeTextDocument = event.document;
+        if (pendingWebviewDocumentUpdates > 0) {
+          return;
+        }
         try {
           loaded.doc = parseDocumentText(event.document.getText());
           outlineProvider.refresh();
@@ -382,11 +386,14 @@ export function activate(context: vscode.ExtensionContext): void {
           const payload = typed.payload as IEditDocument;
           loaded.doc = payload;
           try {
+            pendingWebviewDocumentUpdates += 1;
             await applyDocumentToTextDocument(document, payload);
             outlineProvider.refresh();
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to update iEdit document: ${message}`);
+          } finally {
+            pendingWebviewDocumentUpdates = Math.max(0, pendingWebviewDocumentUpdates - 1);
           }
           return;
         }

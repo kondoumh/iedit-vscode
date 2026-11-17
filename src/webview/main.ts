@@ -456,7 +456,7 @@ function ensureTextEditor(): EditorView {
           return;
         }
         selected.text = update.state.doc.toString();
-        requestAutosave();
+        requestAutosave(1200);
       })
     ]
   });
@@ -1013,7 +1013,7 @@ function addSiblingFromSelection(position?: { x: number; y: number }): void {
   requestAutosave();
 }
 
-function requestAutosave(): void {
+function requestAutosave(delayMs = 600): void {
   if (!state) {
     return;
   }
@@ -1025,7 +1025,7 @@ function requestAutosave(): void {
       return;
     }
     vscode.postMessage({ type: "updateDocument", payload: state });
-  }, 600);
+  }, delayMs);
 }
 
 addChildBtn.addEventListener("click", () => {
