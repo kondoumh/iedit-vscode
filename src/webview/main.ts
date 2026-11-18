@@ -68,7 +68,7 @@ app.innerHTML = `
     display: grid;
     grid-template-rows: auto 1fr;
     --left-pane-width: 300px;
-    --bottom-pane-height: 220px;
+    --bottom-pane-height: 280px;
   }
   .toolbar {
     display: flex;
@@ -92,7 +92,7 @@ app.innerHTML = `
   }
   .right-pane {
     display: grid;
-    grid-template-rows: minmax(140px, 1fr) 6px minmax(120px, var(--bottom-pane-height));
+    grid-template-rows: minmax(120px, 1fr) 6px minmax(180px, var(--bottom-pane-height));
     min-height: 0;
   }
   .splitter {
@@ -127,6 +127,15 @@ app.innerHTML = `
     font-size: var(--vscode-editor-font-size);
     border: none;
     outline: none;
+    caret-color: #f2f2f2;
+  }
+  .cm-editor .cm-content {
+    caret-color: #f2f2f2;
+  }
+  .cm-editor.cm-focused .cm-cursorLayer .cm-cursor,
+  .cm-editor .cm-cursorLayer .cm-cursor,
+  .cm-editor .cm-dropCursor {
+    border-left-color: #f2f2f2 !important;
   }
   .cm-scroller {
     font-family: inherit;
