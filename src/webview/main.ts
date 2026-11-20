@@ -51,6 +51,40 @@ if (!appElement) {
   throw new Error("app container not found");
 }
 const app = appElement as HTMLDivElement;
+const ICONS = {
+  addChild:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10v2H10v4H8V8H4V6h4V2h2v4zm-4 8h14v2H6v2H4v-4a2 2 0 0 1 2-2z"/></svg>',
+  addSibling:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h8v2H3V6zm10 0h8v2h-8V6zM3 11h8v2H3v-2zm14-3h2v3h3v2h-3v3h-2v-3h-3v-2h3V8zM3 16h8v2H3v-2zm10 0h8v2h-8v-2z"/></svg>',
+  moveUp:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5 6 6-1.4 1.4-3.6-3.6V19h-2V8.8l-3.6 3.6L6 11l6-6z"/></svg>',
+  moveDown:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-6-6 1.4-1.4 3.6 3.6V5h2v10.2l3.6-3.6L18 13l-6 6z"/></svg>',
+  indent:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h10v2H3V6zm0 5h10v2H3v-2zm0 5h10v2H3v-2zm12-6 6 4-6 4v-3h-3v-2h3v-3z"/></svg>',
+  outdent:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h10v2H3V6zm0 5h10v2H3v-2zm0 5h10v2H3v-2zm9-6V7l-6 4 6 4v-3h3v-2h-3z"/></svg>',
+  delete:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h5v2H3V5h5l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM6 9h2v9H6V9z"/></svg>',
+  rename:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.2V21h3.8l11-11-3.8-3.8-11 11zM20.7 7c.4-.4.4-1 0-1.4L18.4 3.3c-.4-.4-1-.4-1.4 0l-1.8 1.8 3.8 3.8L20.7 7z"/></svg>',
+  color:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18.4 2.6 3 3a2 2 0 0 1 0 2.8l-9.8 9.8-4.2 1.2 1.2-4.2 9.8-9.8a2 2 0 0 1 2.8 0zM4 20h16v2H4z"/></svg>',
+  apply:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 16.2-3.5-3.5L4 14.2 9 19l11-11-1.5-1.5z"/></svg>',
+  clear:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 6.4-1.4-1.4L12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>',
+  linkMode:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 13a3.5 3.5 0 0 1 0-7h4V4h-4a5.5 5.5 0 1 0 0 11h4v-2h-4zm3.5 0h2v-2h-2v2zm5.5-9h-4v2h4a3.5 3.5 0 1 1 0 7h-4v2h4a5.5 5.5 0 1 0 0-11z"/></svg>',
+  link:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.6 13.4 9.2 12l4.8-4.8a3 3 0 1 1 4.2 4.2l-2 2-1.4-1.4 2-2a1 1 0 1 0-1.4-1.4l-4.8 4.8zM13.4 10.6l1.4 1.4-4.8 4.8a3 3 0 1 1-4.2-4.2l2-2 1.4 1.4-2 2a1 1 0 1 0 1.4 1.4l4.8-4.8z"/></svg>',
+  linkLabel:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h10v2H3v-2zm0 5h18v2H3v-2zm14-5 4-4 1.4 1.4-4 4z"/></svg>',
+  unlink:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m17 7 1.4 1.4-2 2L15 9l2-2zM7 17 5.6 15.6l2-2L9 15l-2 2zm2.5-4.1L8.1 11.5l6.4-6.4 1.4 1.4-6.4 6.4zm6.4 6.4-6.4-6.4 1.4-1.4 6.4 6.4-1.4 1.4z"/></svg>',
+  save:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2zm0 2v14h14V7.8L16.2 5H5zm2 8h10v6H7v-6zm0-8h8v4H7V5z"/></svg>'
+} as const;
 
 app.innerHTML = `
 <style>
@@ -66,7 +100,7 @@ app.innerHTML = `
   #app {
     height: 100vh;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto 1fr auto;
     --left-pane-width: 300px;
     --bottom-pane-height: 280px;
   }
@@ -168,6 +202,24 @@ app.innerHTML = `
     gap: 6px;
     align-items: center;
   }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    display: block;
+  }
+  .icon-btn.active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+  }
   select, button, input {
     color: var(--vscode-input-foreground);
     background: var(--vscode-input-background);
@@ -195,6 +247,13 @@ app.innerHTML = `
     background: transparent;
     border-radius: 4px;
   }
+  .context-menu button svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    vertical-align: text-bottom;
+    margin-right: 4px;
+  }
   .context-menu button:hover {
     background: var(--vscode-list-hoverBackground);
   }
@@ -206,21 +265,46 @@ app.innerHTML = `
   .hidden {
     display: none;
   }
+  .floating-tooltip {
+    position: fixed;
+    z-index: 2000;
+    pointer-events: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--vscode-editorHoverWidget-background, rgba(30, 30, 30, 0.95));
+    color: var(--vscode-editorHoverWidget-foreground, #f0f0f0);
+    border: 1px solid var(--vscode-editorHoverWidget-border, rgba(120, 120, 120, 0.8));
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 80ms linear;
+  }
+  .floating-tooltip.visible {
+    opacity: 1;
+  }
+  .status-bar {
+    min-height: 24px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px 6px;
+    border-top: 1px solid var(--vscode-panel-border);
+  }
 </style>
 <div class="toolbar">
-  <button id="addChildBtn">+ Child</button>
-  <button id="addSiblingBtn">+ Sibling</button>
-  <button id="moveUpBtn">↑</button>
-  <button id="moveDownBtn">↓</button>
-  <button id="indentBtn">→</button>
-  <button id="outdentBtn">←</button>
-  <button id="deleteBtn">Delete</button>
-  <button id="renameBtn">Rename</button>
-  <button id="nodeColorBtn">Node Color</button>
+  <button id="addChildBtn" class="icon-btn" title="Add Child" aria-label="Add Child">${ICONS.addChild}</button>
+  <button id="addSiblingBtn" class="icon-btn" title="Add Sibling" aria-label="Add Sibling">${ICONS.addSibling}</button>
+  <button id="moveUpBtn" class="icon-btn" title="Move Up" aria-label="Move Up">${ICONS.moveUp}</button>
+  <button id="moveDownBtn" class="icon-btn" title="Move Down" aria-label="Move Down">${ICONS.moveDown}</button>
+  <button id="indentBtn" class="icon-btn" title="Indent" aria-label="Indent">${ICONS.indent}</button>
+  <button id="outdentBtn" class="icon-btn" title="Outdent" aria-label="Outdent">${ICONS.outdent}</button>
+  <button id="deleteBtn" class="icon-btn" title="Delete Node" aria-label="Delete Node">${ICONS.delete}</button>
+  <button id="renameBtn" class="icon-btn" title="Rename Node" aria-label="Rename Node">${ICONS.rename}</button>
+  <button id="nodeColorBtn" class="icon-btn" title="Node Color" aria-label="Node Color">${ICONS.color}</button>
   <div id="nodeColorPanel" class="color-panel hidden">
     <input id="nodeColorInput" type="color" />
-    <button id="applyNodeColorBtn">Apply</button>
-    <button id="clearNodeColorBtn">Clear</button>
+    <button id="applyNodeColorBtn" class="icon-btn" title="Apply Color" aria-label="Apply Color">${ICONS.apply}</button>
+    <button id="clearNodeColorBtn" class="icon-btn" title="Clear Color" aria-label="Clear Color">${ICONS.clear}</button>
   </div>
   <select id="shapeSelect">
     <option value="box">Box</option>
@@ -229,15 +313,14 @@ app.innerHTML = `
   </select>
   <div class="spacer"></div>
   <div class="network-controls">
-    <button id="linkModeBtn">Link Mode: OFF</button>
+    <button id="linkModeBtn" class="icon-btn" title="Link Mode: OFF" aria-label="Link Mode: OFF">${ICONS.linkMode}</button>
     <select id="linkToSelect"></select>
-    <button id="linkBtn">Link</button>
+    <button id="linkBtn" class="icon-btn" title="Create Link" aria-label="Create Link">${ICONS.link}</button>
     <select id="linkSelect"></select>
-    <button id="editLinkBtn">Link Label</button>
-    <button id="deleteLinkBtn">Unlink</button>
+    <button id="editLinkBtn" class="icon-btn" title="Edit Link Label" aria-label="Edit Link Label">${ICONS.linkLabel}</button>
+    <button id="deleteLinkBtn" class="icon-btn" title="Unlink" aria-label="Unlink">${ICONS.unlink}</button>
   </div>
-  <button id="saveBtn">Save</button>
-  <span id="status" class="meta"></span>
+  <button id="saveBtn" class="icon-btn" title="Save" aria-label="Save">${ICONS.save}</button>
 </div>
 <div class="layout">
   <div class="left-pane pane">
@@ -251,9 +334,13 @@ app.innerHTML = `
     <div id="textEditor"></div>
   </div>
 </div>
-<div id="networkContextMenu" class="context-menu hidden">
-  <button id="networkMenuAddSiblingBtn">Add Sibling</button>
+<div class="status-bar">
+  <span id="status" class="meta"></span>
 </div>
+<div id="networkContextMenu" class="context-menu hidden">
+  <button id="networkMenuAddSiblingBtn" title="Add Sibling" aria-label="Add Sibling">${ICONS.addSibling} Add Sibling</button>
+</div>
+<div id="floatingTooltip" class="floating-tooltip"></div>
 `;
 
 const treeEl = document.getElementById("tree") as HTMLDivElement;
@@ -286,6 +373,7 @@ const verticalSplitter = document.getElementById("verticalSplitter") as HTMLDivE
 const horizontalSplitter = document.getElementById("horizontalSplitter") as HTMLDivElement;
 const networkContextMenu = document.getElementById("networkContextMenu") as HTMLDivElement;
 const networkMenuAddSiblingBtn = document.getElementById("networkMenuAddSiblingBtn") as HTMLButtonElement;
+const floatingTooltip = document.getElementById("floatingTooltip") as HTMLDivElement;
 
 const nodesData = new DataSet<Record<string, unknown>>();
 const edgesData = new DataSet<Record<string, unknown>>();
@@ -348,7 +436,50 @@ function requestInput(options: { title: string; value: string; placeHolder?: str
 }
 
 function updateLinkModeUI(): void {
-  linkModeBtn.textContent = isLinkModeActive ? "Link Mode: ON" : "Link Mode: OFF";
+  const label = isLinkModeActive ? "Link Mode: ON" : "Link Mode: OFF";
+  linkModeBtn.dataset.tooltip = label;
+  linkModeBtn.setAttribute("aria-label", label);
+  linkModeBtn.classList.toggle("active", isLinkModeActive);
+}
+
+function showFloatingTooltip(text: string, clientX: number, clientY: number): void {
+  floatingTooltip.textContent = text;
+  floatingTooltip.style.left = `${clientX + 10}px`;
+  floatingTooltip.style.top = `${clientY + 14}px`;
+  floatingTooltip.classList.add("visible");
+}
+
+function hideFloatingTooltip(): void {
+  floatingTooltip.classList.remove("visible");
+}
+
+function setupIconTooltips(): void {
+  const iconButtons = Array.from(document.querySelectorAll("button.icon-btn")) as HTMLButtonElement[];
+  for (const button of iconButtons) {
+    const label = button.getAttribute("title");
+    if (label) {
+      button.dataset.tooltip = label;
+      button.removeAttribute("title");
+    }
+    button.addEventListener("mouseenter", (event) => {
+      const tooltipText = button.dataset.tooltip;
+      if (!tooltipText) {
+        return;
+      }
+      const mouseEvent = event as MouseEvent;
+      showFloatingTooltip(tooltipText, mouseEvent.clientX, mouseEvent.clientY);
+    });
+    button.addEventListener("mousemove", (event) => {
+      const tooltipText = button.dataset.tooltip;
+      if (!tooltipText || !floatingTooltip.classList.contains("visible")) {
+        return;
+      }
+      const mouseEvent = event as MouseEvent;
+      showFloatingTooltip(tooltipText, mouseEvent.clientX, mouseEvent.clientY);
+    });
+    button.addEventListener("mouseleave", hideFloatingTooltip);
+    button.addEventListener("blur", hideFloatingTooltip);
+  }
 }
 
 function notifySelectionChanged(): void {
@@ -1163,11 +1294,7 @@ linkModeBtn.addEventListener("click", () => {
   resetLinkModeSource();
   updateLinkModeUI();
   renderNetwork();
-  if (isLinkModeActive) {
-    setStatus("Link mode: click source node");
-  } else {
-    setStatus("Link mode off");
-  }
+  statusEl.textContent = "";
 });
 
 editLinkBtn.addEventListener("click", async () => {
@@ -1380,3 +1507,4 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
 vscode.postMessage({ type: "requestInit" });
 setupPaneResizers();
 updateLinkModeUI();
+setupIconTooltips();

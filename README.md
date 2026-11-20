@@ -8,6 +8,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 - VS Code サイドバーの `iEdit Outline` ツリー表示（Webview と選択同期）
 - `iEdit Outline` のコンテキストメニューで Move Up / Move Down / Indent / Outdent
 - ツールバーの ↑ / ↓ / → / ← で Move Up / Move Down / Indent / Outdent
+- ツールバーはアイコン表示 + Tooltip（title）対応
 - 同階層ノードのネットワーク表示（ノード移動、リンク追加）
 - Link Mode（2クリック）で直感的なリンク作成
 - Link Mode で始点ノードをネットワーク上にハイライト表示
