@@ -5,6 +5,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 ## MVP で実装していること
 
 - ノードの階層管理（ツリー表示）
+- 左ペインアウトラインの開閉（▶ / ▼）
 - VS Code サイドバーの `iEdit Outline` ツリー表示（Webview と選択同期）
 - `iEdit Outline` のコンテキストメニューで Move Up / Move Down / Indent / Outdent
 - ツールバーの ↑ / ↓ / → / ← で Move Up / Move Down / Indent / Outdent

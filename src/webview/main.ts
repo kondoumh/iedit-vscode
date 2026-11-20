@@ -190,6 +190,36 @@ app.innerHTML = `
     margin: 0;
     padding-left: 14px;
   }
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .tree-toggle {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none !important;
+    background: transparent !important;
+    color: var(--vscode-foreground);
+    opacity: 0.85;
+    cursor: pointer;
+    padding: 0 !important;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .tree-toggle:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground);
+    border-radius: 3px;
+  }
+  .tree-toggle-spacer {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+  }
   .meta {
     opacity: 0.8;
     font-size: 12px;
@@ -400,6 +430,7 @@ let imozuruDragContext: { anchorId: string; nodeIds: Set<string>; edges: Array<{
 const isMacPlatform = /Mac|iPhone|iPad/.test(navigator.platform);
 let networkContextMenuCanvasPosition: { x: number; y: number } | null = null;
 let selectedLinkId: string | null = null;
+const collapsedTreeNodeIds = new Set<string>();
 const DEFAULT_NODE_COLOR = "#97c2fc";
 const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.heading, color: "var(--vscode-textPreformat-foreground, #d7ba7d)", fontWeight: "700" },
@@ -640,6 +671,12 @@ function renderTree(): void {
     return;
   }
   const currentState = state;
+  const nodeIdSet = new Set(currentState.nodes.map((node) => node.id));
+  for (const nodeId of Array.from(collapsedTreeNodeIds)) {
+    if (!nodeIdSet.has(nodeId)) {
+      collapsedTreeNodeIds.delete(nodeId);
+    }
+  }
   const renderBranch = (parentId: string | null): string => {
     const children = getChildren(parentId);
     if (children.length === 0) {
@@ -648,15 +685,40 @@ function renderTree(): void {
     return `<ul>${children
       .map((node) => {
         const selectedClass = node.id === currentState.selectedNodeId ? "selected" : "";
+        const hasChildren = getChildren(node.id).length > 0;
+        const isCollapsed = hasChildren && collapsedTreeNodeIds.has(node.id);
         return `<li>
-          <span class="tree-node ${selectedClass}" data-node-id="${node.id}">${escapeHtml(node.label)}</span>
-          ${renderBranch(node.id)}
+          <div class="tree-row">
+            ${
+              hasChildren
+                ? `<button class="tree-toggle" data-node-id="${node.id}" aria-label="${isCollapsed ? "Expand" : "Collapse"}">${isCollapsed ? "▶" : "▼"}</button>`
+                : '<span class="tree-toggle-spacer"></span>'
+            }
+            <span class="tree-node ${selectedClass}" data-node-id="${node.id}">${escapeHtml(node.label)}</span>
+          </div>
+          ${isCollapsed ? "" : renderBranch(node.id)}
         </li>`;
       })
       .join("")}</ul>`;
   };
 
   treeEl.innerHTML = renderBranch(null);
+
+  for (const element of Array.from(treeEl.querySelectorAll(".tree-toggle"))) {
+    element.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = (element as HTMLElement).dataset.nodeId;
+      if (!id) {
+        return;
+      }
+      if (collapsedTreeNodeIds.has(id)) {
+        collapsedTreeNodeIds.delete(id);
+      } else {
+        collapsedTreeNodeIds.add(id);
+      }
+      renderTree();
+    });
+  }
 
   for (const element of Array.from(treeEl.querySelectorAll(".tree-node"))) {
     element.addEventListener("click", () => {

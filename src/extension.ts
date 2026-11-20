@@ -55,10 +55,9 @@ class IEditOutlineProvider implements vscode.TreeDataProvider<IEditNode> {
     const hasChildren = this.getDocument().nodes.some((node) => node.parentId === element.id);
     const item = new vscode.TreeItem(
       element.label,
-      hasChildren ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
+      hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     );
     item.id = element.id;
-    item.description = element.id === this.getDocument().selectedNodeId ? "selected" : undefined;
     return item;
   }
 
@@ -375,6 +374,14 @@ export function activate(context: vscode.ExtensionContext): void {
     return getSelectedNode();
   };
 
+  const selectNodeFromOutline = async (nodeId: string): Promise<void> => {
+    if (loaded.doc.selectedNodeId === nodeId) {
+      return;
+    }
+    loaded.doc.selectedNodeId = nodeId;
+    await postSelectionToWebview();
+  };
+
   const moveSelectedNode = async (direction: -1 | 1, target?: IEditNode): Promise<void> => {
     const sourceNode = resolveTargetNode(target);
     if (!sourceNode || sourceNode.id === "root") {
@@ -464,12 +471,10 @@ export function activate(context: vscode.ExtensionContext): void {
     outlineView,
     outlineView.onDidChangeSelection(async (event) => {
       const selected = event.selection[0];
-      if (!selected || loaded.doc.selectedNodeId === selected.id) {
+      if (!selected) {
         return;
       }
-      loaded.doc.selectedNodeId = selected.id;
-      outlineProvider.refresh();
-      await postSelectionToWebview();
+      await selectNodeFromOutline(selected.id);
     })
   );
 
@@ -534,10 +539,9 @@ export function activate(context: vscode.ExtensionContext): void {
             return;
           }
           loaded.doc.selectedNodeId = payload.nodeId;
-          outlineProvider.refresh();
           const node = outlineProvider.findNode(payload.nodeId);
           if (node) {
-            await outlineView.reveal(node, { select: true, focus: false, expand: true });
+            await outlineView.reveal(node, { select: true, focus: false, expand: false });
           }
           return;
         }
