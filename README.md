@@ -25,6 +25,7 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 - VS Code 標準の保存/ダーティ管理/Undo・Redo（Custom Editor 経由）
 - テキスト編集中は autosave 反映を遅延（入力体験を優先）
 - ワークスペース直下の `.iedit.json` への保存
+- 旧 iEdit JSON（`ieditDoc.nodes` / `ieditDoc.links`）の読み込み互換
 
 ## 使い方
 
@@ -53,3 +54,6 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
   "links": []
 }
 ```
+
+旧 iEdit 形式（`{ "ieditDoc": { "nodes": [...], "links": [...] } }`）を開いた場合も読み込みできます。  
+ただし URL 参照用の外部リンク（`path` を持つリンク）は現行フォーマットに対応項目がないため、読み込み時にスキップされます。
