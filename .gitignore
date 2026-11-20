@@ -3,4 +3,4 @@ dist/
 dist-ts/
 .vscode-test/
 *.vsix
-.iedit.json
+*.iedit.json
