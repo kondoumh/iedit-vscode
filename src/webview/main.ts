@@ -739,6 +739,54 @@ function escapeHtml(text: string): string {
     .replaceAll('"', "&quot;");
 }
 
+function buildParallelEdgeSmoothById(links: IEditLink[]): Map<string, { enabled: true; type: "curvedCW" | "curvedCCW"; roundness: number }> {
+  const smoothById = new Map<string, { enabled: true; type: "curvedCW" | "curvedCCW"; roundness: number }>();
+  const groups = new Map<string, { a: string; b: string; links: IEditLink[] }>();
+  for (const link of links) {
+    const a = link.source < link.target ? link.source : link.target;
+    const b = link.source < link.target ? link.target : link.source;
+    const key = `${a}::${b}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.links.push(link);
+    } else {
+      groups.set(key, { a, b, links: [link] });
+    }
+  }
+
+  for (const group of groups.values()) {
+    if (group.links.length <= 1) {
+      continue;
+    }
+    const ordered = [...group.links].sort((left, right) => left.id.localeCompare(right.id));
+    const slots: number[] = [];
+    if (ordered.length % 2 === 1) {
+      slots.push(0);
+    }
+    for (let depth = 1; slots.length < ordered.length; depth += 1) {
+      slots.push(depth);
+      if (slots.length < ordered.length) {
+        slots.push(-depth);
+      }
+    }
+    for (let index = 0; index < ordered.length; index += 1) {
+      const slot = slots[index];
+      if (slot === 0) {
+        continue;
+      }
+      const link = ordered[index];
+      const directionSign = link.source === group.a && link.target === group.b ? 1 : -1;
+      const signedSlot = slot * directionSign;
+      smoothById.set(ordered[index].id, {
+        enabled: true,
+        type: signedSlot > 0 ? "curvedCW" : "curvedCCW",
+        roundness: Math.min(0.18 * Math.abs(signedSlot), 0.86)
+      });
+    }
+  }
+  return smoothById;
+}
+
 function getLevelNodes(): IEditNode[] {
   const selected = getSelectedNode();
   if (!selected || !state) {
@@ -896,6 +944,8 @@ function renderNetwork(): void {
   }
   const levelNodes = getLevelNodes();
   const levelIds = new Set(levelNodes.map((node) => node.id));
+  const levelLinks = state.links.filter((link) => levelIds.has(link.source) && levelIds.has(link.target));
+  const smoothById = buildParallelEdgeSmoothById(levelLinks);
 
   const visNodes = levelNodes.map((node) => ({
     id: node.id,
@@ -929,9 +979,16 @@ function renderNetwork(): void {
     })()
   }));
 
-  const visEdges = state.links
-    .filter((link) => levelIds.has(link.source) && levelIds.has(link.target))
-    .map((link) => ({ id: link.id, from: link.source, to: link.target, label: link.label ?? "" }));
+  const visEdges = levelLinks.map((link) => {
+    const smooth = smoothById.get(link.id);
+    return {
+      id: link.id,
+      from: link.source,
+      to: link.target,
+      label: link.label ?? "",
+      smooth
+    };
+  });
 
   nodesData.clear();
   edgesData.clear();
