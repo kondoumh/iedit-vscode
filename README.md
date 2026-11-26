@@ -72,6 +72,8 @@ npm run package:vsix
 
 `.vsix` ファイルが生成されるので、VS Code の「Extensions: Install from VSIX...」で試せます。
 
+`.vscodeignore` を設定しているため、配布に不要なソースや作業用ファイルは VSIX から除外されます。
+
 ### GitHub Releases で配布する
 
 このリポジトリには、タグ push 時に VSIX を Release に添付するワークフローを用意しています。
