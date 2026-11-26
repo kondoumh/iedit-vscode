@@ -95,7 +95,7 @@
   },
   "keywords": [],
   "author": "kondoumh",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "@types/node": "^24.9.1",
