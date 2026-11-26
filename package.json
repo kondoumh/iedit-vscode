@@ -1,7 +1,7 @@
 {
   "name": "iedit-vscode",
   "displayName": "iEdit Prototype",
-  "version": "0.1.0",
+  "version": "0.1.1-beta.1",
   "description": "Prototype VS Code extension for iEdit-style idea processing",
   "publisher": "kondoumh",
   "main": "./dist/extension.js",
@@ -90,7 +90,8 @@
     "build": "node ./scripts/build.mjs",
     "watch": "node ./scripts/build.mjs --watch",
     "vscode:prepublish": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package:vsix": "npx @vscode/vsce package --pre-release"
   },
   "keywords": [],
   "author": "kondoumh",

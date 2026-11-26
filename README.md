@@ -59,3 +59,29 @@ iEdit の「ツリー + ネットワーク + テキスト」連携を VS Code �
 
 旧 iEdit 形式（`{ "ieditDoc": { "nodes": [...], "links": [...] } }`）を開いた場合も読み込みできます。  
 ただし URL 参照用の外部リンク（`path` を持つリンク）は現行フォーマットに対応項目がないため、読み込み時にスキップされます。
+
+## VSIX 配布（Marketplace 未公開）
+
+### ローカルで VSIX を作る
+
+```bash
+npm install
+npm run build
+npm run package:vsix
+```
+
+`.vsix` ファイルが生成されるので、VS Code の「Extensions: Install from VSIX...」で試せます。
+
+### GitHub Releases で配布する
+
+このリポジトリには、タグ push 時に VSIX を Release に添付するワークフローを用意しています。
+
+1. バージョンを更新（例: `0.1.1-beta.1`）
+2. タグ作成・push
+
+```bash
+git tag v0.1.1-beta.1
+git push origin v0.1.1-beta.1
+```
+
+3. Actions の `Release VSIX` が実行され、Release ページに `iedit-vscode-<version>.vsix` が添付されます。
