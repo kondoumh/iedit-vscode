@@ -85,3 +85,10 @@ git push origin v0.1.1-beta.1
 ```
 
 3. Actions の `Release VSIX` が実行され、Release ページに `iedit-vscode-<version>.vsix` が添付されます。
+
+### GitHub Release からインストールする
+
+1. Release ページから `.vsix` をダウンロード
+2. VS Code でコマンドパレットを開き、`Extensions: Install from VSIX...` を実行
+3. ダウンロードした `.vsix` ファイルを選択
+4. インストール後、必要に応じて VS Code を再読み込み
